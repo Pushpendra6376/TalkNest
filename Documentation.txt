@@ -1,0 +1,96 @@
+🛠 Tech Stack Recommendations
+Frontend: React.js, Tailwind CSS (for UI), Lucide-react (icons).
+
+Backend: Node.js, Express.js.
+
+Database: MySQL (Sequelize ORM use karein toh behtar hai queries likhne mein aasani hogi).
+
+Real-time: Socket.io (Chat & Notifications ke liye).
+
+Video/Audio Call: WebRTC (PeerJS library is simple for beginners).
+
+Email: Nodemailer (GMAIL SMTP).
+
+Storage: Multer (Local storage for files since it's on localhost).
+
+Security: CryptoJS (E2EE ke liye) aur JWT (Authentication).
+
+Day 1: Database Design & Auth Flow
+DB Schema: Users, Groups, Group_Members, Messages, OTP_Table.
+
+Setup: Express server setup aur MySQL connection.
+
+Auth: Signup/Login APIs with Nodemailer integration for OTP.
+
+OAuth: Passport.js use karke Google, GitHub ka basic setup.
+
+Day 2: Advanced User Management
+Account Actions: Forget password functionality (Email link/OTP).
+
+Account Control: Disable/Delete account features. Deletion ke liye OTP validation logic.
+
+Profile: Edit name, status, aur Profile Picture upload (using Multer).
+
+Day 3: Real-time Chat Foundation
+Socket.io: Server aur Client connection setup.
+
+Individual Chat: One-to-one message exchange logic.
+
+E2EE: Client-side encryption use karein. Message server par save hone se pehle encrypt ho aur receive hone par decrypt.
+
+Day 4: Group Chat Logic
+Group Management: Create group, Add/Remove members, Admin roles.
+
+Group Messaging: Broadcast messages to all members in a group room.
+
+Day 5: Messaging Features (The "WhatsApp" Experience)
+Message Actions: Edit message (15 min limit check), Delete for everyone (2 hr limit), Delete for me.
+
+Interaction: Message tagging (reply) aur message forwarding logic.
+
+Media: Emojis aur GIF integration (Giphy API use kar sakte hain).
+
+Day 6: File Handling & Previews
+File Uploads: Multer validation (Max 5 images/20MB, Video 25MB, Docs 50MB).
+
+Previews: Frontend par file type check karke PDF/Image/Video ke thumbnail icons dikhana.
+
+Day 7: Audio & Video Calling
+WebRTC/PeerJS: Peer-to-peer connection setup karein.
+
+Calling UI: Incoming call notification aur call screen.
+
+Status: User online/offline status track karna.
+
+Day 8: UI/UX Refinement
+Frontend: React components ko finalize karein. Tailwind se sleek dark/light mode ya WhatsApp-style UI banayein.
+
+Encryption Verification: Ye ensure karein ki DB mein message readable format mein nahi hai.
+
+Day 9: Testing, Terms & Bug Fixes
+Legal: Privacy Policy aur Terms of Use ke static pages add karein.
+
+Testing: Localhost par multiple browsers khol kar end-to-end testing (Chat, Call, Files).
+
+Documentation: Project ki README file aur API documentation ready karein.
+
+🔑 Key Features Implementation Tips
+1. End-to-End Encryption (E2EE)
+Expert advice: Server ko kabhi "Private Key" mat bhejo.
+
+User A message encrypt karega User B ki public key se.
+
+Server sirf encrypted text dekhega.
+
+User B apne browser mein apni private key se decrypt karega.
+
+2. Message Deletion Logic
+MySQL query mein created_at timestamp check karein:
+
+JavaScript
+// Example logic for "Delete for Everyone"
+if (currentTime - messageTime < 2 * 60 * 60 * 1000) { 
+    // Allow deletion
+}
+3. File Previews
+Jab user file upload kare, frontend par URL.createObjectURL(file) use karke instant preview dikhayein. Icons ke liye React-file-icon library ka use karein.
