@@ -1,93 +1,116 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
+import toast, { Toaster } from 'react-hot-toast';
+import { FcGoogle } from 'react-icons/fc';
+import { FaFacebook } from 'react-icons/fa';
+import { HiOutlineMail, HiOutlineLockClosed, HiEye, HiEyeOff } from 'react-icons/hi';
 import logo from '../assets/TalkNest1.png';
 
 const Login = () => {
     const navigate = useNavigate();
-    const [identifier, setIdentifier] = useState(''); // Email or Phone
-    const [password, setPassword] = useState('');
+    const [formData, setFormData] = useState({ identifier: '', password: '' });
+    const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
+
+    const handleChange = (e) => {
+        setFormData({ ...formData, [e.target.name]: e.target.value });
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
         try {
-            // Identifier check karega ki input email hai ya phone
-            const response = await axios.post('http://localhost:5000/api/auth/login', { 
-                identifier, 
-                password 
-            });
+            const { data } = await axios.post('http://localhost:4000/api/auth/login', formData);
             
-            // Token save karna (Recruiter likes seeing good token management)
-            localStorage.setItem('token', response.data.token);
-            navigate('/home'); 
+            localStorage.setItem('token', data.token);
+            localStorage.setItem('user', JSON.stringify(data.user));
+            
+            toast.success("Welcome back to the Nest! 🚀");
+            setTimeout(() => navigate('/home'), 1500);
+
         } catch (err) {
-            alert(err.response?.data?.message || "Login failed. Check your credentials.");
+            toast.error(err.response?.data?.message || "Login failed");
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50 font-sans p-4">
-            {/* Background Blobs for Modern UI */}
-            <div className="absolute top-0 -left-4 w-72 h-72 bg-teal-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob"></div>
-            <div className="absolute bottom-0 -right-4 w-72 h-72 bg-purple-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-2000"></div>
+        <div className="min-h-screen flex items-center justify-center bg-[#0f172a] relative overflow-hidden">
+            <Toaster position="top-center" />
+            {/* Background Effects */}
+            <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-teal-500/20 rounded-full blur-[120px]" />
+            <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/20 rounded-full blur-[120px]" />
 
-            <div className="bg-white p-8 md:p-12 rounded-[2.5rem] shadow-2xl w-full max-w-md z-10 border border-slate-100 relative">
-                <div className="flex flex-col items-center mb-8">
-                    <img src={logo} alt="TalkNest" className="h-24 w-auto mb-4 hover:scale-105 transition-transform duration-300" />
-                    <h2 className="text-3xl font-black text-slate-800 tracking-tight">Welcome Back</h2>
-                    <p className="text-slate-500 mt-2 text-center text-sm font-medium">Log in to your nest and start chatting.</p>
-                </div>
-
-                <form onSubmit={handleSubmit} className="space-y-5">
-                    <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">Email or Phone Number</label>
-                        <input 
-                            type="text" 
-                            className="w-full px-5 py-4 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-teal-400 outline-none transition-all bg-slate-50/50"
-                            placeholder="e.g. pushpendra@mail.com or 6376547126"
-                            value={identifier}
-                            onChange={(e) => setIdentifier(e.target.value)}
-                            required
-                        />
+            <div className="relative z-10 w-full max-w-md p-[1px] bg-gradient-to-br from-white/10 to-transparent rounded-3xl backdrop-blur-xl shadow-2xl">
+                <div className="bg-[#1e293b]/90 p-8 rounded-3xl border border-white/10">
+                    <div className="text-center mb-8">
+                        <img src={logo} alt="TalkNest" className="h-16 mx-auto mb-4" />
+                        <h2 className="text-3xl font-bold text-white">Welcome Back</h2>
+                        <p className="text-slate-400 text-sm">Enter your credentials to access your account.</p>
                     </div>
 
-                    <div>
-                        <div className="flex justify-between mb-2 ml-1">
-                            <label className="text-sm font-bold text-slate-700">Password</label>
-                            <span className="text-xs font-bold text-purple-600 cursor-pointer hover:underline">Forgot?</span>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div className="relative">
+                            <HiOutlineMail className="absolute left-4 top-4 text-slate-500 text-xl" />
+                            <input 
+                                name="identifier" 
+                                type="text" 
+                                placeholder="Email or Phone Number" 
+                                onChange={handleChange}
+                                className="w-full pl-12 pr-4 py-3 bg-slate-800/50 border border-slate-700 rounded-xl text-white focus:border-teal-400 focus:ring-1 focus:ring-teal-400 outline-none transition-all"
+                                required 
+                            />
                         </div>
-                        <input 
-                            type="password" 
-                            className="w-full px-5 py-4 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-purple-400 outline-none transition-all bg-slate-50/50"
-                            placeholder="••••••••"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            required
-                        />
+
+                        <div className="relative">
+                            <HiOutlineLockClosed className="absolute left-4 top-4 text-slate-500 text-xl" />
+                            <input 
+                                name="password" 
+                                type={showPassword ? "text" : "password"} 
+                                placeholder="Password" 
+                                onChange={handleChange}
+                                className="w-full pl-12 pr-12 py-3 bg-slate-800/50 border border-slate-700 rounded-xl text-white focus:border-purple-400 focus:ring-1 focus:ring-purple-400 outline-none transition-all"
+                                required 
+                            />
+                            <button 
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute right-4 top-4 text-slate-400 hover:text-white"
+                            >
+                                {showPassword ? <HiEyeOff size={20} /> : <HiEye size={20} />}
+                            </button>
+                        </div>
+
+                        <div className="flex justify-end">
+                            <Link to="/forgot-password" class="text-xs text-purple-400 hover:text-purple-300 font-medium">
+                                Forgot Password?
+                            </Link>
+                        </div>
+
+                        <button disabled={loading} className="w-full py-3 bg-gradient-to-r from-teal-500 to-purple-600 text-white font-bold rounded-xl shadow-lg hover:opacity-90 transition-all disabled:opacity-50">
+                            {loading ? "Signing In..." : "Sign In"}
+                        </button>
+                    </form>
+
+                    <div className="my-6 flex items-center gap-4">
+                        <div className="h-[1px] bg-slate-700 flex-1" />
+                        <span className="text-slate-500 text-xs uppercase font-bold">Or continue with</span>
+                        <div className="h-[1px] bg-slate-700 flex-1" />
                     </div>
 
-                    <button 
-                        type="submit" 
-                        disabled={loading}
-                        className={`w-full py-4 rounded-2xl bg-gradient-to-r from-teal-500 to-purple-600 text-white font-black text-lg shadow-xl transition-all active:scale-95 ${loading ? 'opacity-70 cursor-not-allowed' : 'hover:opacity-90 shadow-teal-200/50'}`}
-                    >
-                        {loading ? 'Authenticating...' : 'Sign In'}
-                    </button>
-                </form>
+                    <div className="grid grid-cols-2 gap-3">
+                        <button className="flex items-center justify-center gap-2 py-2 bg-white rounded-lg hover:bg-slate-100 transition-colors">
+                            <FcGoogle size={20} /> <span className="text-slate-800 font-bold text-sm">Google</span>
+                        </button>
+                        <button className="flex items-center justify-center gap-2 py-2 bg-[#1877F2] rounded-lg hover:bg-[#166fe5] transition-colors">
+                            <FaFacebook size={20} className="text-white" /> <span className="text-white font-bold text-sm">Facebook</span>
+                        </button>
+                    </div>
 
-                <div className="mt-8 text-center">
-                    <p className="text-slate-500 text-sm font-medium">
-                        New to TalkNest? 
-                        <span 
-                            onClick={() => navigate('/register')} 
-                            className="ml-2 text-teal-600 font-extrabold cursor-pointer hover:underline"
-                        >
-                            Create Account
-                        </span>
+                    <p className="mt-6 text-center text-slate-400 text-sm">
+                        Don't have an account? <Link to="/register" className="text-teal-400 font-bold hover:underline">Register</Link>
                     </p>
                 </div>
             </div>

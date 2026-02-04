@@ -1,18 +1,25 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import Login from './pages/Login'; // Path check kar lena
+
+// Pages Import
+import Login from './pages/Login';
 import Register from './pages/Register';
+import VerifyOtp from './components/VerifyOtp';        // New Import
+import ForgotPassword from './components/ForgotPassword'; // New Import
 
 function App() {
   return (
     <Router>
-      <div className="font-sans antialiased text-slate-900">
+      <div className="font-sans antialiased text-slate-900 bg-[#0f172a] min-h-screen">
         <Routes>
-          {/* Default route Login par rakha hai */}
+          {/* Default route redirects to Login */}
           <Route path="/" element={<Navigate to="/login" />} />
           
+          {/* Auth Routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/verify-otp" element={<VerifyOtp />} />          {/* New Route */}
+          <Route path="/forgot-password" element={<ForgotPassword />} /> {/* New Route */}
 
           {/* Home/Dashboard Page */}
           <Route path="/home" element={
@@ -27,8 +34,12 @@ function App() {
                 Your professional communication hub is live.
               </p>
               <button 
-                onClick={() => window.location.href = '/login'}
-                className="mt-8 px-6 py-2 border-2 border-teal-500 text-teal-600 font-bold rounded-full hover:bg-teal-500 hover:text-white transition-all"
+                onClick={() => {
+                  localStorage.removeItem('token'); // Logout par token clear karna achi practice hai
+                  localStorage.removeItem('user');
+                  window.location.href = '/login';
+                }}
+                className="mt-8 px-8 py-3 border-2 border-teal-500 text-teal-600 font-bold rounded-full hover:bg-teal-500 hover:text-white transition-all shadow-lg"
               >
                 Logout
               </button>
