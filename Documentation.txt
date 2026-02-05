@@ -94,3 +94,6 @@ if (currentTime - messageTime < 2 * 60 * 60 * 1000) {
 }
 3. File Previews
 Jab user file upload kare, frontend par URL.createObjectURL(file) use karke instant preview dikhayein. Icons ke liye React-file-icon library ka use karein.
+
+
+mail nhi jaa rhi hai pehle error tha ki ip auth dedo brevo pe bo bhi diya then wapas se kiya toh bo wapas se same bol and user verfiy ho rha hai upar se tumne transaction use nhi kra toh bo user bhi bante jaare bina verification and table bhi turncate nhi ho rhi hai 

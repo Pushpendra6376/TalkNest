@@ -57,7 +57,7 @@ const startServer = async () => {
         // Step B: Sync Models (Tables create/update karna)
         // alter: true -> Agar model me kuch change ho toh table update karega bina data udaye
         // force: false -> Table drop nahi karega (Production ke liye safe)
-        await sequelize.sync({ force: false, alter: true });
+        await sequelize.sync({ force: true, alter: false });
         console.log("All Database Tables Synced Successfully");
 
         // Step C: Start Server
