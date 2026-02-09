@@ -8,7 +8,7 @@ import { connectDB, sequelize } from "./config/db.js";
 // Routes Import
 import authRoutes from "./routes/auth.routes.js";
 
-// Models Import (Zaroori hai taaki Sequelize unhe recognize kare aur tables banaye)
+//Models Import
 import "./models/user.model.js";
 import "./models/otp.model.js";
 import "./models/authProvider.model.js";
@@ -19,24 +19,24 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
-// --- 1. Security & Config Middleware ---
-app.use(helmet()); // HTTP Headers secure karta hai
+//Security & Config Middleware
+app.use(helmet()); // HTTP Headers secure 
 app.use(cors({
-    origin: "http://localhost:5173", // Frontend URL (Vite default)
+    origin: "http://localhost:5173", //Frontend URL
     credentials: true // Agar cookies/sessions future me use karein
 }));
 app.use(express.json()); // JSON parsing
 app.use(express.urlencoded({ extended: true }));
 
-// --- 2. API Routes ---
+// API Routes 
 app.get("/", (req, res) => {
     res.send("TalkNest Backend is running securely 🚀");
 });
 
-// Auth Routes mount karna
+// Auth Routes
 app.use("/api/auth", authRoutes);
 
-// --- 3. Global Error Handler (App crash hone se bachata hai) ---
+// Global Error Handler
 app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).json({
@@ -46,21 +46,21 @@ app.use((err, req, res, next) => {
     });
 });
 
-// --- 4. Server Startup & DB Connection ---
+// Server Startup & DB Connection
 const PORT = process.env.PORT || 4000;
 
 const startServer = async () => {
     try {
-        // Step A: Connect to DB
+        // Connect to DB
         await connectDB();
 
-        // Step B: Sync Models (Tables create/update karna)
+        // Step B: Sync Models 
         // alter: true -> Agar model me kuch change ho toh table update karega bina data udaye
         // force: false -> Table drop nahi karega (Production ke liye safe)
-        await sequelize.sync({ force: true, alter: false });
+        await sequelize.sync({ force: false, alter: true });
         console.log("All Database Tables Synced Successfully");
 
-        // Step C: Start Server
+        // Start Server
         server.listen(PORT, () => {
             console.log(`TalkNest Server running on port ${PORT}`);
         });
