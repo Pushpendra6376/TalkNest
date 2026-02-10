@@ -1,15 +1,14 @@
-const User = require('../models/User');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { Op } from "sequelize";
+import User from "../models/user.model.js";
 
-exports.register = async (req, res) => {
+export const register = async (req, res) => {
     try {
         const { name, email, phone, password } = req.body;
 
-        // Password Hashing
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // User creation (Sequelize automatically throws error if unique constraint fails)
         const user = await User.create({
             name,
             email,
@@ -17,42 +16,64 @@ exports.register = async (req, res) => {
             password: hashedPassword
         });
 
-        res.status(201).json({ 
-            message: "User registered successfully!", 
-            user: { id: user.id, name: user.name } 
+        res.status(201).json({
+            message: "User registered successfully!",
+            user: { id: user.id, name: user.name }
         });
 
     } catch (error) {
-        // Handle Uniqueness and Validation Errors
-        if (error.name === 'SequelizeUniqueConstraintError') {
+            //console.error("REGISTER ERROR 👉", error); // ADD THIS
+
+        if (error.name === "SequelizeUniqueConstraintError") {
             return res.status(400).json({ message: "Email or Phone already exists!" });
         }
-        if (error.name === 'SequelizeValidationError') {
+
+        if (error.name === "SequelizeValidationError") {
             return res.status(400).json({ message: error.errors[0].message });
         }
+
         res.status(500).json({ message: "Server Error" });
     }
 };
 
-exports.login = async (req, res) => {
-    const { identifier, password } = req.body; // email or phone
+export const login = async (req, res) => {
     try {
-        const { Op } = require('sequelize');
-        const user = await User.findOne({ 
+        const { identifier, password } = req.body;
+        //console.log("LOGIN BODY 👉", req.body);
+        const user = await User.findOne({
             where: {
-                [Op.or]: [{ email: identifier }, { phone: identifier }]
+                [Op.or]: [
+                    { email: identifier },
+                    { phone: identifier }
+                ]
             }
         });
 
-        if (!user) return res.status(404).json({ message: "User not found!" });
+        //console.log("USER FOUND 👉", user?.email);
+        if (!user) {
+            return res.status(404).json({ message: "User not found!" });
+        }
 
         const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) return res.status(400).json({ message: "Invalid credentials!" });
+        if (!isMatch) {
+            return res.status(400).json({ message: "Invalid credentials!" });
+        }
+        //console.log("PASSWORD MATCH 👉", isMatch);
+        const token = jwt.sign(
+            { id: user.id },
+            process.env.JWT_SECRET,
+            { expiresIn: "7d" }
+        );
 
-        const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+        //console.log("JWT_SECRET 👉", process.env.JWT_SECRET);
 
-        res.json({ token, user: { id: user.id, name: user.name } });
-    } catch (err) {
+        res.json({
+            token,
+            user: { id: user.id, name: user.name }
+        });
+
+    } catch (error) {
+        console.error("LOGIN ERROR", error);
         res.status(500).json({ message: "Login failed" });
     }
 };

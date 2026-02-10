@@ -10,9 +10,6 @@ import authRoutes from "./routes/auth.routes.js";
 
 //Models Import
 import "./models/user.model.js";
-import "./models/otp.model.js";
-import "./models/authProvider.model.js";
-import "./models/passwordReset.model.js";
 
 dotenv.config();
 

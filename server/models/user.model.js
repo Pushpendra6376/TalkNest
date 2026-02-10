@@ -1,7 +1,12 @@
-const { DataTypes } = require('sequelize');
-const sequelize = require('../config/db');
+import { DataTypes } from "sequelize";
+import { sequelize } from "../config/db.js";
 
-const User = sequelize.define('User', {
+const User = sequelize.define("User", {
+    id: {
+        type: DataTypes.UUID,
+        defaultValue: DataTypes.UUIDV4, // Sequelize auto-generates UUID
+        primaryKey: true
+    },
     name: {
         type: DataTypes.STRING,
         allowNull: false
@@ -9,17 +14,14 @@ const User = sequelize.define('User', {
     email: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true, // Email uniqueness check
-        validate: {
-            isEmail: true
-        }
+        unique: true,
+        validate: { isEmail: true }
     },
     phone: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true, // Phone uniqueness check
+        unique: true,
         validate: {
-            // Indian 10-digit number validation logic
             is: {
                 args: /^[0-9]{10}$/,
                 msg: "Phone number must be exactly 10 digits."
@@ -30,6 +32,8 @@ const User = sequelize.define('User', {
         type: DataTypes.STRING,
         allowNull: false
     }
+}, {
+    tableName: "users" // optional but recommended
 });
 
-module.exports = User;
+export default User;

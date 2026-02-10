@@ -4,7 +4,6 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 // Pages Import
 import Login from './pages/Login';
 import Register from './pages/Register';
-import VerifyOtp from './components/VerifyOtp';        // New Import
 import ForgotPassword from './components/ForgotPassword'; // New Import
 
 function App() {
@@ -18,7 +17,6 @@ function App() {
           {/* Auth Routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-          <Route path="/verify-otp" element={<VerifyOtp />} />          {/* New Route */}
           <Route path="/forgot-password" element={<ForgotPassword />} /> {/* New Route */}
 
           {/* Home/Dashboard Page */}
