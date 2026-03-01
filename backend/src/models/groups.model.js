@@ -2,8 +2,8 @@ import { DataTypes } from "sequelize";
 import { sequelize } from "../config/db.js";
 import User from "./user.model.js";
 
-const Message = sequelize.define(
-  "Message",
+const Group = sequelize.define(
+  "Group",
   {
     id: {
       type: DataTypes.INTEGER,
@@ -11,34 +11,24 @@ const Message = sequelize.define(
       primaryKey: true,
     },
 
-    senderId: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      references: {
-        model: User,
-        key: "id",
-      },
-      onDelete: "CASCADE",
-    },
-
-    receiverId: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      references: {
-        model: User,
-        key: "id",
-      },
-      onDelete: "CASCADE",
-    },
-
-    text: {
-      type: DataTypes.STRING(2000),
-      allowNull: true,
-    },
-
-    image: {
+    name: {
       type: DataTypes.STRING,
-      allowNull: true,
+      allowNull: false,
+    },
+
+    groupPic: {
+      type: DataTypes.STRING,
+      defaultValue: "",
+    },
+
+    createdBy: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: User,
+        key: "id",
+      },
+      onDelete: "CASCADE",
     },
   },
   {
@@ -46,4 +36,4 @@ const Message = sequelize.define(
   }
 );
 
-export default Message;
+export default Group;

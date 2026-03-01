@@ -1,9 +1,17 @@
 import express from "express";
 import dotenv from "dotenv";
-import { connectDB } from "./config/db.js";
+import { connectDB, sequelize } from "./config/db.js";
 import authRoutes from "./routes/auth.route.js";
 import messageRoutes from "./routes/message.route.js";
 import path from "path";
+ 
+// models
+import "./models/user.model.js";
+import "./models/message.model.js";
+import "./models/groups.model.js";
+import "./models/groupMembers.model.js";
+import "./models/groupMessages.model.js";
+
 
 dotenv.config();
 
@@ -29,7 +37,9 @@ if(process.env.NODE_ENV === "production"){
     })
 }
 
-connectDB().then(() => {
+connectDB().then(async () => {
+  await sequelize.sync({ force: true })
+
   app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
   });

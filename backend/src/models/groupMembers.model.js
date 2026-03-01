@@ -1,9 +1,10 @@
 import { DataTypes } from "sequelize";
 import { sequelize } from "../config/db.js";
 import User from "./user.model.js";
+import Group from "./groups.model.js";
 
-const Message = sequelize.define(
-  "Message",
+const GroupMember = sequelize.define(
+  "GroupMember",
   {
     id: {
       type: DataTypes.INTEGER,
@@ -11,7 +12,17 @@ const Message = sequelize.define(
       primaryKey: true,
     },
 
-    senderId: {
+    groupId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: Group,
+        key: "id",
+      },
+      onDelete: "CASCADE",
+    },
+
+    userId: {
       type: DataTypes.INTEGER,
       allowNull: false,
       references: {
@@ -21,29 +32,21 @@ const Message = sequelize.define(
       onDelete: "CASCADE",
     },
 
-    receiverId: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      references: {
-        model: User,
-        key: "id",
-      },
-      onDelete: "CASCADE",
-    },
-
-    text: {
-      type: DataTypes.STRING(2000),
-      allowNull: true,
-    },
-
-    image: {
-      type: DataTypes.STRING,
-      allowNull: true,
+    role: {
+      type: DataTypes.ENUM("admin", "member"),
+      defaultValue: "member",
     },
   },
   {
     timestamps: true,
+    indexes: [
+      {
+        unique: true,
+        fields: ["groupId", "userId"], // ek user ek group me sirf ek baar
+      },
+    ],
   }
 );
 
-export default Message;
+
+export default GroupMember;

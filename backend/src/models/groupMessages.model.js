@@ -1,14 +1,25 @@
 import { DataTypes } from "sequelize";
 import { sequelize } from "../config/db.js";
 import User from "./user.model.js";
+import Group from "./groups.model.js";
 
-const Message = sequelize.define(
-  "Message",
+const GroupMessage = sequelize.define(
+  "GroupMessage",
   {
     id: {
       type: DataTypes.INTEGER,
       autoIncrement: true,
       primaryKey: true,
+    },
+
+    groupId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: Group,
+        key: "id",
+      },
+      onDelete: "CASCADE",
     },
 
     senderId: {
@@ -21,18 +32,8 @@ const Message = sequelize.define(
       onDelete: "CASCADE",
     },
 
-    receiverId: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      references: {
-        model: User,
-        key: "id",
-      },
-      onDelete: "CASCADE",
-    },
-
     text: {
-      type: DataTypes.STRING(2000),
+      type: DataTypes.TEXT,
       allowNull: true,
     },
 
@@ -46,4 +47,4 @@ const Message = sequelize.define(
   }
 );
 
-export default Message;
+export default GroupMessage;
