@@ -1,6 +1,13 @@
 import User from "../models/user.model";
 
 export const register = (req, res) => {
+    const {fullName, email, password} = req.body;
+
+    try {
+        
+    } catch (error) {
+        
+    }
 
 }
 
