@@ -12,6 +12,13 @@ export const register = (req, res) => {
 }
 
 export const login = (req, res) => {
+    const {email, password} = req.body;
+
+    try {
+        
+    } catch (error) {
+        
+    }
     
 }
 
