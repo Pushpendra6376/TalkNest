@@ -1,29 +1,155 @@
-import User from "../models/user.model";
+import User from "../models/user.model.js";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { Op } from "sequelize";
 
-export const register = (req, res) => {
-    const {fullName, email, password} = req.body;
 
-    try {
-        
-    } catch (error) {
-        
+/*
+SIGNUP API
+POST /api/auth/signup
+*/
+export const register = async (req, res) => {
+  try {
+    const { name, email, phone, password } = req.body;
+
+    if (!name || !email || !phone || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "All fields are required",
+      });
     }
 
-}
+    // check existing user
+    const existingUser = await User.findOne({
+      where: { email },
+    });
 
-export const login = (req, res) => {
-    const {email, password} = req.body;
-
-    try {
-        
-    } catch (error) {
-        
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "User already exists with this email",
+      });
     }
-    
-}
 
-export const logout = (req, res) => {
-    
-}
+    const existingPhone = await User.findOne({
+      where: { phone },
+    });
 
-export default {register, login, logout};
+    if (existingPhone) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number already registered",
+      });
+    }
+
+    // hash password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const newUser = await User.create({
+      name,
+      email,
+      phone,
+      password: hashedPassword,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "User registered successfully",
+      user: {
+        id: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+        phone: newUser.phone,
+      },
+    });
+  } catch (error) {
+    console.error("REGISTER ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
+/*
+LOGIN API
+POST /api/auth/login
+*/
+export const login = async (req, res) => {
+  try {
+    const { emailOrPhone, password } = req.body;
+
+    if (!emailOrPhone || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email/Phone and password required",
+      });
+    }
+
+    // find user by email OR phone
+    const user = await User.findOne({
+      where: {
+        [Op.or]: [
+          { email: emailOrPhone },
+          { phone: emailOrPhone },
+        ],
+      },
+    });
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
+
+    // compare password
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
+
+    // create token
+    const token = jwt.sign(
+      { id: user.id },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRE }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Login successful",
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+      },
+    });
+  } catch (error) {
+    console.error("LOGIN ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
+
+//LOGOUT API
+export const logout = async (req, res) => {
+  return res.status(200).json({
+    success: true,
+    message: "User logged out successfully",
+  });
+};
+
+export default { register, login, logout };
