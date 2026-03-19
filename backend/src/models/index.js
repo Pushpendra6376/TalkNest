@@ -3,29 +3,60 @@ import Group from "./groups.model.js";
 import GroupMember from "./groupMembers.model.js";
 import GroupMessage from "./groupMessages.model.js";
 import Message from "./message.model.js";
-/* Associations */
 
-// Group Creator
-User.hasMany(Group, { foreignKey: "createdBy", as: "createdGroups" });
-Group.belongsTo(User, { foreignKey: "createdBy", as: "creator" });
+/* ===================== ASSOCIATIONS ===================== */
 
-// Many-to-Many
+// ===================== Group Creator =====================
+User.hasMany(Group, {
+  foreignKey: "createdBy",
+  as: "createdGroups",
+  onDelete: "CASCADE",
+});
+
+Group.belongsTo(User, {
+  foreignKey: "createdBy",
+  as: "creator",
+});
+
+// ===================== Many-to-Many (User ↔ Group) =====================
 User.belongsToMany(Group, {
   through: GroupMember,
   foreignKey: "userId",
   as: "groups",
+  onDelete: "CASCADE",
 });
 
 Group.belongsToMany(User, {
   through: GroupMember,
   foreignKey: "groupId",
   as: "members",
+  onDelete: "CASCADE",
 });
 
-// Group Messages
+// 🔥 Explicit Junction Table Relations (VERY IMPORTANT)
+Group.hasMany(GroupMember, {
+  foreignKey: "groupId",
+  onDelete: "CASCADE",
+});
+
+GroupMember.belongsTo(Group, {
+  foreignKey: "groupId",
+});
+
+User.hasMany(GroupMember, {
+  foreignKey: "userId",
+  onDelete: "CASCADE",
+});
+
+GroupMember.belongsTo(User, {
+  foreignKey: "userId",
+});
+
+// ===================== Group Messages =====================
 Group.hasMany(GroupMessage, {
   foreignKey: "groupId",
   as: "messages",
+  onDelete: "CASCADE",
 });
 
 GroupMessage.belongsTo(Group, {
@@ -35,6 +66,7 @@ GroupMessage.belongsTo(Group, {
 User.hasMany(GroupMessage, {
   foreignKey: "senderId",
   as: "groupMessages",
+  onDelete: "CASCADE",
 });
 
 GroupMessage.belongsTo(User, {
@@ -42,11 +74,28 @@ GroupMessage.belongsTo(User, {
   as: "sender",
 });
 
-// 1 on 1 conversation  message
-// Sender relation
-User.hasMany(Message, { foreignKey: "senderId", as: "sentMessages" });
-Message.belongsTo(User, { foreignKey: "senderId", as: "sender" });
+// ===================== 1-to-1 Messages =====================
 
-// Receiver relation
-User.hasMany(Message, { foreignKey: "receiverId", as: "receivedMessages" });
-Message.belongsTo(User, { foreignKey: "receiverId", as: "receiver" });
+// Sender
+User.hasMany(Message, {
+  foreignKey: "senderId",
+  as: "sentMessages",
+  onDelete: "CASCADE",
+});
+
+Message.belongsTo(User, {
+  foreignKey: "senderId",
+  as: "sender",
+});
+
+// Receiver
+User.hasMany(Message, {
+  foreignKey: "receiverId",
+  as: "receivedMessages",
+  onDelete: "CASCADE",
+});
+
+Message.belongsTo(User, {
+  foreignKey: "receiverId",
+  as: "receiver",
+});
