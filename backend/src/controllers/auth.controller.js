@@ -4,10 +4,7 @@ import jwt from "jsonwebtoken";
 import { Op } from "sequelize";
 
 
-/*
-SIGNUP API
-POST /api/auth/signup
-*/
+// Register API
 export const register = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
@@ -16,6 +13,28 @@ export const register = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "All fields are required",
+      });
+    }
+
+    // validating input
+    if(password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters",
+      });
+    }
+
+    if(phone.length < 10) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number must be at least 10 characters",
+      });
+    }
+
+    if (!/\S+@\S+\.\S+/.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid email format",
       });
     }
 
@@ -73,10 +92,7 @@ export const register = async (req, res) => {
   }
 };
 
-/*
-LOGIN API
-POST /api/auth/login
-*/
+// Login API
 export const login = async (req, res) => {
   try {
     const { emailOrPhone, password } = req.body;
