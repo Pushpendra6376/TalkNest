@@ -5,8 +5,8 @@ import {
   getMessagesByUserId,
   sendMessage,
 } from "../controllers/message.controller.js";
-import { protectRoute } from "../middleware/auth.middleware.js";
-import { arcjetProtection } from "../middleware/arcjet.middleware.js";
+import { protectRoute } from "../middlewares/auth.moddleware.js";
+import { arcjetProtection } from "../middlewares/arcjet.middleware.js";
 
 const router = express.Router();
 
