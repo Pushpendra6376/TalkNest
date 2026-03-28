@@ -1,24 +1,23 @@
 import express from "express";
 import dotenv from "dotenv";
+import { createServer } from "http";
 import { connectDB, sequelize } from "./config/db.js";
 import authRoutes from "./routes/auth.route.js";
 import messageRoutes from "./routes/message.route.js";
 import userRoutes from "./routes/user.route.js";
+import { initSocket } from "./config/socket.js";
 import path from "path";
  
 // models
 import "./models/user.model.js";
 import "./models/message.model.js";
-import "./models/groups.model.js";
-import "./models/groupMembers.model.js";
-import "./models/groupMessages.model.js";
-import "./models/index.js"; // for associations
 
 
 dotenv.config();
 
 const app = express();
 const __dirname = path.resolve();
+const httpServer = createServer(app);
 
 const PORT = process.env.PORT || 5000;
 
@@ -41,9 +40,10 @@ if(process.env.NODE_ENV === "production"){
 }
 
 connectDB().then(async () => {
-  await sequelize.sync({ force: true })
+  await sequelize.sync();
+  initSocket(httpServer);
 
-  app.listen(PORT, () => {
+  httpServer.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
   });
 });

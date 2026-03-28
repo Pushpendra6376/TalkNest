@@ -17,10 +17,10 @@ const sequelize = new Sequelize(
 const connectDB = async () => {
     try {
         await sequelize.authenticate();
-        console.log("Database Connected Successfully ")
+        console.log("Database Connected Successfully ");
     } catch (error) {
         console.log("Database Connection Failed", error.message);
-        
+        throw error;
     }
 };
 
