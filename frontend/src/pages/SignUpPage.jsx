@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { useAuthStore } from "../store/useAuthStore";
+import { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { useAuthStore } from '../store/useAuthStore.js';
 import {
   MessageCircleIcon,
   LockIcon,
@@ -7,15 +8,15 @@ import {
   UserIcon,
   PhoneIcon,
   LoaderIcon,
-} from "lucide-react";
-import { Link } from "react-router";
+} from 'lucide-react';
 
 function SignUpPage() {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    password: "",
+    name: '',
+    email: '',
+    phone: '',
+    password: '',
   });
 
   const { signup, isSigningUp } = useAuthStore();
@@ -29,15 +30,21 @@ function SignUpPage() {
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!formData.name || !formData.email || !formData.phone || !formData.password) {
-      alert("Please fill all fields");
+      alert('Please fill all fields');
       return;
     }
 
-    signup(formData);
+    try {
+      await signup(formData);
+      alert('Account created successfully. Please login.');
+      navigate('/login');
+    } catch (error) {
+      alert(error.message);
+    }
   };
 
   return (

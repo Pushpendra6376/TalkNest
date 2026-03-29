@@ -2,6 +2,29 @@ import { Op } from "sequelize";
 import cloudinary from "../config/cloudinary.js";
 import User from "../models/user.model.js";
 
+export const getUserById = async (req, res) => {
+  try {
+    const userId = Number(req.params.id);
+
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid user ID." });
+    }
+
+    const user = await User.findByPk(userId, {
+      attributes: ["id", "name", "email", "phone", "profilePic", "bio"],
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    return res.status(200).json({ success: true, user });
+  } catch (error) {
+    console.error("Error in getUserById:", error);
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+};
+
 export const updateProfile = async (req, res) => {
   try {
     const userId = req.user.id;
