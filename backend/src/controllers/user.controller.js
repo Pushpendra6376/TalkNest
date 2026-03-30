@@ -1,6 +1,38 @@
-import { Op } from "sequelize";
+import { Op, fn, col, where } from "sequelize";
 import cloudinary from "../config/cloudinary.js";
 import User from "../models/user.model.js";
+
+export const searchUsers = async (req, res) => {
+  try {
+    const query = String(req.query.q || "").trim();
+
+    if (!query) {
+      return res.status(400).json({ success: false, message: "Search query is required." });
+    }
+
+    const searchPattern = `%${query.toLowerCase()}%`;
+    const users = await User.findAll({
+      where: {
+        [Op.or]: [
+          where(fn("lower", col("name")), { [Op.like]: searchPattern }),
+          where(fn("lower", col("email")), { [Op.like]: searchPattern }),
+          where(fn("lower", col("phone")), { [Op.like]: searchPattern }),
+        ],
+      },
+      attributes: ["id", "name", "email", "phone", "profilePic", "bio"],
+      limit: 20,
+    });
+
+    if (!users.length) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    return res.status(200).json({ success: true, users });
+  } catch (error) {
+    console.error("Error in searchUsers:", error);
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+};
 
 export const getUserById = async (req, res) => {
   try {

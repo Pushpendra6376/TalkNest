@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore.js';
 import api from '../api/axios.js';
 
-const DEFAULT_AVATAR = 'https://i.pravatar.cc/300?u=talknest-profile';
+const DEFAULT_AVATAR = '../avatar.png';
 
 function ProfilePage() {
   const { id } = useParams();

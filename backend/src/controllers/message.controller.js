@@ -60,14 +60,17 @@ export const sendMessage = async (req, res) => {
   try {
     const senderId = req.user.id;
     const receiverId = Number(req.params.id);
-    const { text, image } = req.body;
+    const { text } = req.body;
 
     if (!Number.isInteger(receiverId)) {
       return res.status(400).json({ message: "Invalid receiver ID." });
     }
 
-    if (!text && !image) {
-      return res.status(400).json({ message: "Text or image is required." });
+    const file = req.file;
+    const { mediaType } = req.body;
+
+    if (!text && !file) {
+      return res.status(400).json({ message: "Text or media is required." });
     }
 
     if (senderId === receiverId) {
@@ -82,8 +85,24 @@ export const sendMessage = async (req, res) => {
     }
 
     let imageUrl = null;
-    if (image) {
-      const uploadResponse = await cloudinary.uploader.upload(image);
+    if (file) {
+      const streamUpload = (buffer) =>
+        new Promise((resolve, reject) => {
+          const uploadStream = cloudinary.uploader.upload_stream(
+            { resource_type: 'auto', folder: 'chat_media' },
+            (error, result) => {
+              if (error) {
+                reject(error);
+              } else {
+                resolve(result);
+              }
+            }
+          );
+
+          uploadStream.end(buffer);
+        });
+
+      const uploadResponse = await streamUpload(file.buffer);
       imageUrl = uploadResponse.secure_url;
     }
 
@@ -139,7 +158,7 @@ export const getChatPartners = async (req, res) => {
           [Op.in]: chatPartnerIds,
         },
       },
-      attributes: ["id", "name", "email", "phone"],
+      attributes: ["id", "name", "email", "phone", "profilePic"],
     });
 
     return res.status(200).json(chatPartners);
