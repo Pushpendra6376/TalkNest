@@ -147,9 +147,18 @@ function ChatWindow({
                         }}
                       />
                     ) : null}
-                    <p className="mt-2 text-[11px] text-slate-500">
-                      {new Date(message.createdAt).toLocaleString()}
-                    </p>
+                    <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                      <span>{new Date(message.createdAt).toLocaleString()}</span>
+                      {isOwn && (
+                        <span className="font-semibold">
+                          {message.status === 'sent' && '✓'}
+                          {message.status === 'delivered' && '✓✓'}
+                          {message.status === 'seen' && (
+                            <span className="text-cyan-400">✓✓</span>
+                          )}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 );
               })}

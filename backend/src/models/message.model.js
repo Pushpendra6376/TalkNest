@@ -40,6 +40,12 @@ const Message = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
     },
+
+    status: {
+      type: DataTypes.ENUM('sent', 'delivered', 'seen'),
+      allowNull: false,
+      defaultValue: 'sent',
+    },
   },
   {
     timestamps: true,

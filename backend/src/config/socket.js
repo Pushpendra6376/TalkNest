@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import { Server } from "socket.io";
 import User from "../models/user.model.js";
+import Message from "../models/message.model.js";
 
 export let io = null;
 const receiverSockets = new Map();
@@ -47,6 +48,41 @@ export const initSocket = (server) => {
         receiverSockets.delete(String(socket.userId));
       }
       console.log("Socket disconnected:", socket.id);
+    });
+
+    socket.on("messageStatusUpdate", async ({ messageId, status }) => {
+      try {
+        if (!socket.userId) {
+          return;
+        }
+
+        if (!messageId || !['delivered', 'seen'].includes(status)) {
+          return;
+        }
+
+        const message = await Message.findByPk(messageId);
+        if (!message || message.receiverId !== socket.userId) {
+          return;
+        }
+
+        const rank = { sent: 1, delivered: 2, seen: 3 };
+        if (rank[status] <= rank[message.status]) {
+          return;
+        }
+
+        message.status = status;
+        await message.save();
+
+        const senderSocketId = getReceiverSocketId(message.senderId);
+        if (senderSocketId) {
+          io.to(senderSocketId).emit("messageStatusUpdated", {
+            messageId: message.id,
+            status,
+          });
+        }
+      } catch (error) {
+        console.error("Socket status update failed:", error);
+      }
     });
   });
 };

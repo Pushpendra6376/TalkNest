@@ -167,3 +167,65 @@ export const getChatPartners = async (req, res) => {
     return res.status(500).json({ error: "Internal server error" });
   }
 };
+
+export const updateMessageStatus = async (req, res) => {
+  try {
+    const myId = req.user.id;
+    const chatPartnerId = Number(req.params.id);
+    const { status } = req.body;
+
+    if (!Number.isInteger(chatPartnerId)) {
+      return res.status(400).json({ message: "Invalid chat partner ID." });
+    }
+
+    if (!['delivered', 'seen'].includes(status)) {
+      return res.status(400).json({ message: "Invalid message status." });
+    }
+
+    if (chatPartnerId === myId) {
+      return res.status(400).json({ message: "Cannot update status for yourself." });
+    }
+
+    const allowedStatuses = status === 'delivered' ? ['sent'] : ['sent', 'delivered'];
+
+    const messagesToUpdate = await Message.findAll({
+      where: {
+        senderId: chatPartnerId,
+        receiverId: myId,
+        status: {
+          [Op.in]: allowedStatuses,
+        },
+      },
+      attributes: ['id'],
+    });
+
+    if (messagesToUpdate.length === 0) {
+      return res.status(200).json({ updatedMessageIds: [] });
+    }
+
+    const messageIds = messagesToUpdate.map((message) => message.id);
+    await Message.update(
+      { status },
+      {
+        where: {
+          id: messageIds,
+        },
+      }
+    );
+
+    const senderSocketId = getReceiverSocketId(chatPartnerId);
+    if (senderSocketId) {
+      messageIds.forEach((messageId) => {
+        io.to(senderSocketId).emit('messageStatusUpdated', {
+          messageId,
+          status,
+        });
+      });
+    }
+
+    return res.status(200).json({ updatedMessageIds: messageIds });
+  } catch (error) {
+    console.error("Error in updateMessageStatus:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore.js';
 import api from '../api/axios.js';
@@ -22,6 +22,9 @@ function ChatPage() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const socketRef = useRef(null);
+  const activeContactRef = useRef(activeContact);
+  const userRef = useRef(user);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -110,39 +113,115 @@ function ChatPage() {
   }, [activeContact]);
 
   useEffect(() => {
-    const backendUrl = import.meta.env.VITE_API_URL || window.location.origin;
-    const socket = io(backendUrl, {
-      transports: ['websocket'],
-    });
+    activeContactRef.current = activeContact;
+  }, [activeContact]);
 
-    if (!token) {
-      socket.disconnect();
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  const sendStatusUpdate = (status, messageId) => {
+    if (!socketRef.current || !messageId) {
       return;
     }
 
+    socketRef.current.emit('messageStatusUpdate', {
+      messageId,
+      status,
+    });
+  };
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    const backendUrl = import.meta.env.VITE_API_URL || window.location.origin;
+    const socket = io(backendUrl, {
+      transports: ['websocket', 'polling'],
+    });
+
+    socketRef.current = socket;
     socket.emit('login', { token });
 
-    const handleNewMessage = (message) => {
+    socket.on('newMessage', (message) => {
+      if (message.senderId === userRef.current?.id) {
+        return;
+      }
+
+      const currentContact = activeContactRef.current;
+      const isCurrentChat = currentContact && message.senderId === currentContact.id;
+
+      if (isCurrentChat) {
+        setMessages((prev) => [...prev, message]);
+        sendStatusUpdate('seen', message.id);
+      } else {
+        sendStatusUpdate('delivered', message.id);
+      }
+    });
+
+    socket.on('messageStatusUpdated', ({ messageId, status }) => {
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === messageId ? { ...message, status } : message
+        )
+      );
+    });
+
+    socket.on('loginError', (message) => {
+      console.warn('Socket login failed:', message);
+    });
+
+    socket.on('connect_error', (error) => {
+      console.warn('Socket connection error:', error.message || error);
+    });
+
+    return () => {
+      socket.off('newMessage');
+      socket.off('messageStatusUpdated');
+      socket.off('loginError');
+      socket.off('connect_error');
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    const markCurrentChatSeen = async () => {
       if (!activeContact) {
         return;
       }
 
-      const isCurrentChat =
-        message.senderId === activeContact.id ||
-        message.receiverId === activeContact.id;
+      const pendingSeen = messages.some(
+        (message) =>
+          message.senderId === activeContact.id && message.status !== 'seen'
+      );
 
-      if (isCurrentChat) {
-        setMessages((prev) => [...prev, message]);
+      if (!pendingSeen) {
+        return;
+      }
+
+      try {
+        const { data } = await api.post(`/messages/status/${activeContact.id}`, {
+          status: 'seen',
+        });
+
+        if (Array.isArray(data.updatedMessageIds) && data.updatedMessageIds.length) {
+          setMessages((prev) =>
+            prev.map((message) =>
+              data.updatedMessageIds.includes(message.id)
+                ? { ...message, status: 'seen' }
+                : message
+            )
+          );
+        }
+      } catch (error) {
+        console.error('Unable to mark messages seen:', error);
       }
     };
 
-    socket.on('newMessage', handleNewMessage);
-
-    return () => {
-      socket.off('newMessage', handleNewMessage);
-      socket.disconnect();
-    };
-  }, [token, activeContact]);
+    markCurrentChatSeen();
+  }, [activeContact, messages]);
 
   const handleLogout = () => {
     logout();
