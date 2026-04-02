@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { MessageCircle, Send, Smile, X } from 'lucide-react';
+import { MessageCircle, Send, Smile, X, Paperclip } from 'lucide-react';
 import EmojiPicker from './EmojiPicker.jsx';
 import MediaComposer from './MediaComposer.jsx';
 import twemoji from 'twemoji';
@@ -106,35 +106,46 @@ function ChatWindow({
                   >
                     {message.image && (
                       <div className="mb-3">
-                        {isVideoUrl(message.image) ? (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenMedia(message.image, 'video')}
-                            className="w-full"
-                          >
-                            <video controls className="max-h-64 w-full rounded-3xl object-contain">
-                              <source src={message.image} />
-                              Your browser does not support the video tag.
-                            </video>
-                          </button>
-                        ) : isAudioUrl(message.image) ? (
-                          <audio controls className="w-full">
-                            <source src={message.image} />
-                            Your browser does not support the audio element.
-                          </audio>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenMedia(message.image, 'photo')}
-                            className="w-full"
-                          >
-                            <img
-                              src={message.image}
-                              alt="Attached"
-                              className="max-h-64 w-full rounded-3xl object-contain"
-                            />
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenMedia(message.image, 'photo')}
+                          className="w-full"
+                        >
+                          <img
+                            src={message.image}
+                            alt="Attached"
+                            className="max-h-64 w-full rounded-3xl object-contain"
+                          />
+                        </button>
+                      </div>
+                    )}
+
+                    {message.video && (
+                      <div className="mb-3">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenMedia(message.video, 'video')}
+                          className="w-full"
+                        >
+                          <video controls className="max-h-64 w-full rounded-3xl object-contain">
+                            <source src={message.video} />
+                            Your browser does not support the video tag.
+                          </video>
+                        </button>
+                      </div>
+                    )}
+
+                    {message.document && (
+                      <div className="mb-3">
+                        <a
+                          href={message.document}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-cyan-200 hover:bg-slate-700"
+                        >
+                          <Paperclip className="h-4 w-4" />
+                          Download document
+                        </a>
                       </div>
                     )}
                     {message.text ? (

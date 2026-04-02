@@ -41,6 +41,16 @@ const Message = sequelize.define(
       allowNull: true,
     },
 
+    video: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+
+    document: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+
     status: {
       type: DataTypes.ENUM('sent', 'delivered', 'seen'),
       allowNull: false,
