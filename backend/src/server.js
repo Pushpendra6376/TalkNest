@@ -5,12 +5,14 @@ import { connectDB, sequelize } from "./config/db.js";
 import authRoutes from "./routes/auth.route.js";
 import messageRoutes from "./routes/message.route.js";
 import userRoutes from "./routes/user.route.js";
-import { initSocket } from "./config/socket.js";
+import conversationRoutes from "./routes/conversation.route.js";
+import { initSocket } from "./socket/index.js";
 import path from "path";
  
 // models
 import "./models/user.model.js";
 import "./models/message.model.js";
+import "./models/conversation.model.js";
 
 
 dotenv.config();
@@ -28,6 +30,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use("/api/auth", authRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/user", userRoutes);
+app.use("/api/conversations", conversationRoutes);
 
   app.use((err, req, res, next) => {
     if (res.headersSent) {
@@ -51,7 +54,7 @@ if(process.env.NODE_ENV === "production"){
 }
 
 connectDB().then(async () => {
-  await sequelize.sync({ alter: true });
+  await sequelize.sync({ force: true });
   initSocket(httpServer);
 
   httpServer.listen(PORT, () => {

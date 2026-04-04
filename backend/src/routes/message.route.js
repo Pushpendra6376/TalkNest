@@ -1,27 +1,21 @@
 import express from "express";
-import multer from "multer";
 import {
-  getAllContacts,
-  getChatPartners,
-  getMessagesByUserId,
-  sendMessage,
-  updateMessageStatus,
+  allMessage,
+  deleteMessage,
+  bulkHide,
+  clearChat,
+  toggleStar,
+  getStarredMessages,
 } from "../controllers/message.controller.js";
-import { protectRoute } from "../middlewares/auth.middleware.js";
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 },
-});
+import fetchuser from "../middlewares/fetchUser.js";
 
 const router = express.Router();
 
-router.use(protectRoute);
-
-router.get("/contacts", getAllContacts);
-router.get("/chats", getChatPartners);
-router.get("/:id", getMessagesByUserId);
-router.post("/send/:id", upload.single('media'), sendMessage);
-router.post("/status/:id", updateMessageStatus);
+router.get("/starred", fetchuser, getStarredMessages);
+router.get("/:id", fetchuser, allMessage);
+router.delete("/bulk/hide", fetchuser, bulkHide);
+router.delete("/:id", fetchuser, deleteMessage);
+router.post("/clear/:conversationId", fetchuser, clearChat);
+router.post("/:id/star", fetchuser, toggleStar);
 
 export default router;

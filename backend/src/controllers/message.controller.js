@@ -1,278 +1,388 @@
-import cloudinary from "../config/cloudinary.js";
-import { getReceiverSocketId, io } from "../config/socket.js";
-import { Op } from "sequelize";
+import { GoogleGenAI } from "@google/genai";
 import Message from "../models/message.model.js";
+import Conversation from "../models/conversation.model.js";
 import User from "../models/user.model.js";
+import { GEMINI_MODEL, GEMINI_API_KEY } from "../secrets.js";
 
-export const getAllContacts = async (req, res) => {
+const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
+const allMessage = async (req, res) => {
   try {
-    const loggedInUserId = req.user.id;
-
-    const contacts = await User.findAll({
-      where: {
-        id: {
-          [Op.ne]: loggedInUserId,
-        },
-      },
-      attributes: ["id", "name", "email", "phone"],
-    });
-
-    return res.status(200).json(contacts);
-  } catch (error) {
-    console.error("Error in getAllContacts:", error);
-    return res.status(500).json({ message: "Server error" });
-  }
-};
-
-export const getMessagesByUserId = async (req, res) => {
-  try {
-    const myId = req.user.id;
-    const userToChatId = Number(req.params.id);
-
-    if (!Number.isInteger(userToChatId)) {
-      return res.status(400).json({ message: "Invalid chat user ID." });
+    // Verify the requesting user is a member of this conversation
+    const conversation = await Conversation.findById(req.params.id);
+    if (!conversation) {
+      return res.status(404).json({ error: "Conversation not found" });
     }
-
-    const messages = await Message.findAll({
-      where: {
-        [Op.or]: [
-          {
-            senderId: myId,
-            receiverId: userToChatId,
-          },
-          {
-            senderId: userToChatId,
-            receiverId: myId,
-          },
-        ],
-      },
-      order: [["createdAt", "ASC"]],
-    });
-
-    return res.status(200).json(messages);
-  } catch (error) {
-    console.error("Error in getMessagesByUserId:", error);
-    return res.status(500).json({ error: "Internal server error" });
-  }
-};
-
-export const sendMessage = async (req, res) => {
-  try {
-    const senderId = req.user.id;
-    const receiverId = Number(req.params.id);
-    const { text, image, video, document } = req.body;
-
-    if (!Number.isInteger(receiverId)) {
-      return res.status(400).json({ message: "Invalid receiver ID." });
-    }
-
-    if (!text && !image && !video && !document) {
-      return res.status(400).json({ message: "Text, image, video, or document is required." });
-    }
-
-    if (senderId === receiverId) {
-      return res.status(400).json({ message: "Cannot send messages to yourself." });
-    }
-
-    const receiver = await User.findByPk(receiverId, {
-      attributes: ["id"],
-    });
-    if (!receiver) {
-      return res.status(404).json({ message: "Receiver not found." });
-    }
-
-    let imageUrl = null;
-    let videoUrl = null;
-    let documentUrl = null;
-
-    const file = req.file;
-    const mediaType = (req.body.mediaType || '').toLowerCase();
-
-    if (file) {
-      let resourceType = 'raw';
-      if (mediaType === 'photo' || mediaType === 'image') resourceType = 'image';
-      else if (mediaType === 'video') resourceType = 'video';
-      else if (mediaType === 'audio') resourceType = 'video';
-      else if (mediaType === 'document') resourceType = 'raw';
-      else if (file.mimetype.startsWith('image/')) resourceType = 'image';
-      else if (file.mimetype.startsWith('video/') || file.mimetype.startsWith('audio/')) resourceType = 'video';
-
-      const uploadResponse = await cloudinary.uploader.upload_stream(
-        { resource_type: resourceType, folder: `chat_media/${resourceType}s` },
-        (error, result) => {
-          if (error) {
-            throw error;
-          }
-          return result;
-        }
-      );
-
-      // Wait for stream upload by wrapping in promise
-      const uploadResult = await new Promise((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(
-          { resource_type: resourceType, folder: `chat_media/${resourceType}s` },
-          (error2, result2) => {
-            if (error2) {
-              reject(error2);
-            } else {
-              resolve(result2);
-            }
-          }
-        );
-        uploadStream.end(file.buffer);
-      });
-
-      if (resourceType === 'image') imageUrl = uploadResult.secure_url;
-      else if (resourceType === 'video') videoUrl = uploadResult.secure_url;
-      else documentUrl = uploadResult.secure_url;
-    }
-
-    if (image && !imageUrl) {
-      const uploaded = await cloudinary.uploader.upload(image, {
-        resource_type: 'image',
-        folder: 'chat_media/images',
-      });
-      imageUrl = uploaded.secure_url;
-    }
-
-    if (video && !videoUrl) {
-      const uploaded = await cloudinary.uploader.upload(video, {
-        resource_type: 'video',
-        folder: 'chat_media/videos',
-      });
-      videoUrl = uploaded.secure_url;
-    }
-
-    if (document && !documentUrl) {
-      const uploaded = await cloudinary.uploader.upload(document, {
-        resource_type: 'raw',
-        folder: 'chat_media/documents',
-      });
-      documentUrl = uploaded.secure_url;
-    }
-
-    const newMessage = await Message.create({
-      senderId,
-      receiverId,
-      text: text || null,
-      image: imageUrl,
-      video: videoUrl,
-      document: documentUrl,
-    });
-
-    const receiverSocketId = getReceiverSocketId(receiverId);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit("newMessage", newMessage);
-    }
-
-    return res.status(201).json(newMessage);
-  } catch (error) {
-    console.error("Error in sendMessage:", error);
-    return res.status(500).json({ error: "Internal server error" });
-  }
-};
-
-export const getChatPartners = async (req, res) => {
-  try {
-    const loggedInUserId = req.user.id;
-
-    const messages = await Message.findAll({
-      where: {
-        [Op.or]: [
-          { senderId: loggedInUserId },
-          { receiverId: loggedInUserId },
-        ],
-      },
-      attributes: ["senderId", "receiverId"],
-      raw: true,
-    });
-
-    const chatPartnerIds = Array.from(
-      messages.reduce((ids, message) => {
-        if (message.senderId !== loggedInUserId) ids.add(message.senderId);
-        if (message.receiverId !== loggedInUserId) ids.add(message.receiverId);
-        return ids;
-      }, new Set())
+    const isMember = conversation.members.some(
+      (m) => m.toString() === req.user.id
     );
-
-    if (!chatPartnerIds.length) {
-      return res.status(200).json([]);
+    if (!isMember) {
+      return res.status(403).json({ error: "Forbidden" });
     }
 
-    const chatPartners = await User.findAll({
-      where: {
-        id: {
-          [Op.in]: chatPartnerIds,
-        },
-      },
-      attributes: ["id", "name", "email", "phone", "profilePic"],
-    });
-
-    return res.status(200).json(chatPartners);
-  } catch (error) {
-    console.error("Error in getChatPartners:", error);
-    return res.status(500).json({ error: "Internal server error" });
-  }
-};
-
-export const updateMessageStatus = async (req, res) => {
-  try {
-    const myId = req.user.id;
-    const chatPartnerId = Number(req.params.id);
-    const { status } = req.body;
-
-    if (!Number.isInteger(chatPartnerId)) {
-      return res.status(400).json({ message: "Invalid chat partner ID." });
-    }
-
-    if (!['delivered', 'seen'].includes(status)) {
-      return res.status(400).json({ message: "Invalid message status." });
-    }
-
-    if (chatPartnerId === myId) {
-      return res.status(400).json({ message: "Cannot update status for yourself." });
-    }
-
-    const allowedStatuses = status === 'delivered' ? ['sent'] : ['sent', 'delivered'];
-
-    const messagesToUpdate = await Message.findAll({
-      where: {
-        senderId: chatPartnerId,
-        receiverId: myId,
-        status: {
-          [Op.in]: allowedStatuses,
-        },
-      },
-      attributes: ['id'],
-    });
-
-    if (messagesToUpdate.length === 0) {
-      return res.status(200).json({ updatedMessageIds: [] });
-    }
-
-    const messageIds = messagesToUpdate.map((message) => message.id);
-    await Message.update(
-      { status },
+    // Mark all unseen messages as seen in a single bulk write
+    await Message.updateMany(
       {
-        where: {
-          id: messageIds,
-        },
-      }
+        conversationId: req.params.id,
+        hiddenFrom: { $ne: req.user.id },
+        "seenBy.user": { $ne: req.user.id },
+      },
+      { $push: { seenBy: { user: req.user.id, seenAt: new Date() } } }
     );
 
-    const senderSocketId = getReceiverSocketId(chatPartnerId);
-    if (senderSocketId) {
-      messageIds.forEach((messageId) => {
-        io.to(senderSocketId).emit('messageStatusUpdated', {
-          messageId,
-          status,
-        });
-      });
+    const messages = await Message.find({
+      conversationId: req.params.id,
+      hiddenFrom: { $ne: req.user.id },
+    })
+      .populate('replyTo', 'text imageUrl senderId softDeleted')
+      .lean();
+
+    // Sanitize soft-deleted messages before sending to client:
+    // replace content with tombstone text so the real content
+    // is never exposed in the network response.
+    const sanitized = messages.map((msg) => {
+      if (!msg.softDeleted) return msg;
+      return {
+        ...msg,
+        text: "This message was deleted",
+        imageUrl: undefined,
+      };
+    });
+
+    res.json(sanitized);
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).send("Internal Server Error");
+  }
+};
+
+/**
+ * DELETE /api/message/:id
+ * body: { scope: "me" | "everyone" }
+ *
+ * scope="everyone"  — soft-delete: sets softDeleted=true, visible to all as tombstone.
+ *                     Only the original sender may do this.
+ * scope="me"        — hard-delete for caller: adds caller to hiddenFrom so the
+ *                     message (or tombstone) is skipped when queried for them.
+ *                     Available for both own and received messages.
+ */
+const deleteMessage = async (req, res) => {
+  const { scope } = req.body;
+  if (!scope || !['me', 'everyone'].includes(scope)) {
+    return res.status(400).json({ error: 'scope must be "me" or "everyone"' });
+  }
+  try {
+    const message = await Message.findById(req.params.id);
+    if (!message) return res.status(404).json({ error: 'Message not found' });
+
+    if (scope === 'everyone') {
+      // Only the original sender can soft-delete for everyone
+      if (message.senderId.toString() !== req.user.id) {
+        return res.status(403).json({ error: 'Only the sender can delete for everyone' });
+      }
+      message.softDeleted = true;
+    } else {
+      // scope === 'me': hide from requester only
+      const alreadyHidden = message.hiddenFrom.some(
+        (id) => id.toString() === req.user.id
+      );
+      if (!alreadyHidden) message.hiddenFrom.push(req.user.id);
     }
 
-    return res.status(200).json({ updatedMessageIds: messageIds });
+    await message.save();
+    res.status(200).json(message);
   } catch (error) {
-    console.error("Error in updateMessageStatus:", error);
-    return res.status(500).json({ error: "Internal server error" });
+    console.log(error.message);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
+};
+
+/**
+ * POST /api/message/clear/:conversationId
+ * Adds the requesting user to hiddenFrom for every message in the conversation,
+ * effectively clearing the entire chat history from their view.
+ */
+const clearChat = async (req, res) => {
+  try {
+    const conversation = await Conversation.findById(req.params.conversationId);
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+
+    const isMember = conversation.members.some(
+      (m) => m.toString() === req.user.id
+    );
+    if (!isMember) return res.status(403).json({ error: 'Forbidden' });
+
+    await Message.updateMany(
+      {
+        conversationId: req.params.conversationId,
+        hiddenFrom: { $ne: req.user.id },
+      },
+      { $push: { hiddenFrom: req.user.id } }
+    );
+
+    res.status(200).json({ message: 'Chat cleared' });
+  } catch (error) {
+    console.log(error.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+};
+
+/**
+ * Async generator that:
+ * 1. Saves the user message to DB immediately → yields { type: "user-message", message }
+ * 2. Streams the Gemini response chunk-by-chunk → yields { type: "chunk", text }
+ * 3. Saves the completed bot message → yields { type: "done", message }
+ * Yields { type: "error" } on failure so the caller can clean up.
+ */
+const streamAiResponse = async function* (text, senderId, conversationId) {
+  const conv = await Conversation.findById(conversationId);
+  const botMember = await User.findOne({
+    _id: { $in: conv.members },
+    isBot: true,
+  });
+  if (!botMember) { yield { type: "error" }; return; }
+  const botId = botMember._id;
+
+  // Save user message first so it gets a real _id
+  const userMessage = await Message.create({
+    conversationId,
+    senderId,
+    text,
+    seenBy: [{ user: botId, seenAt: new Date() }],
+  });
+  yield { type: "user-message", message: userMessage };
+
+  // Build chat history (skip the message we just saved and image-only messages)
+  const messagelist = await Message.find({
+    conversationId,
+    _id: { $ne: userMessage._id },
+    text: { $exists: true, $ne: null },
+  })
+    .sort({ createdAt: -1 })
+    .limit(19);
+
+  const history = messagelist
+    .reverse()
+    .map((m) => ({
+      role: m.senderId.toString() === senderId.toString() ? "user" : "model",
+      parts: [{ text: m.text }],
+    }));
+
+  const chat = ai.chats.create({
+    model: GEMINI_MODEL,
+    history,
+    config: { temperature: 0.5, maxOutputTokens: 1024 },
+  });
+
+  let fullText = "";
+  try {
+    const stream = await chat.sendMessageStream({ message: text });
+    for await (const chunk of stream) {
+      const chunkText = chunk.text || "";
+      if (chunkText) {
+        fullText += chunkText;
+        yield { type: "chunk", text: chunkText };
+      }
+    }
+  } catch (err) {
+    console.error("Gemini stream error:", err.message);
+    // Roll back the user message so the conversation stays consistent
+    await Message.findByIdAndDelete(userMessage._id);
+    yield { type: "error", userMessageId: userMessage._id.toString() };
+    return;
+  }
+
+  if (!fullText) {
+    await Message.findByIdAndDelete(userMessage._id);
+    yield { type: "error", userMessageId: userMessage._id.toString() };
+    return;
+  }
+
+  const botMessage = await Message.create({
+    conversationId,
+    senderId: botId,
+    text: fullText,
+  });
+
+  conv.latestmessage = fullText;
+  await conv.save();
+
+  yield { type: "done", message: botMessage };
+};
+
+const sendMessageHandler = async (data) => {
+  const {
+    text,
+    imageUrl,
+    senderId,
+    conversationId,
+    receiverId,
+    isReceiverInsideChatRoom,
+    replyTo,
+  } = data;
+  const conversation = await Conversation.findById(conversationId);
+  if (!isReceiverInsideChatRoom) {
+    const message = await Message.create({
+      conversationId,
+      senderId,
+      text,
+      imageUrl,
+      seenBy: [],
+      ...(replyTo && { replyTo }),
+    });
+
+    // update conversation latest message and increment unread count of receiver by 1
+    conversation.latestmessage = text || "sent an image";
+    conversation.unreadCounts.map((unread) => {
+      if (unread.userId.toString() == receiverId.toString()) {
+        unread.count += 1;
+      }
+    });
+    await conversation.save();
+    await message.populate('replyTo', 'text imageUrl senderId softDeleted');
+    return message;
+  } else {
+    // create new message with seenby receiver
+    const message = await Message.create({
+      conversationId,
+      senderId,
+      text,
+      imageUrl,
+      seenBy: [
+        {
+          user: receiverId,
+          seenAt: new Date(),
+        },
+      ],
+      ...(replyTo && { replyTo }),
+    });
+    conversation.latestmessage = text || "sent an image";
+    await conversation.save();
+    await message.populate('replyTo', 'text imageUrl senderId softDeleted');
+    return message;
+  }
+};
+
+/**
+ * Used by the socket handler for real-time delete.
+ * scope="everyone" → soft-delete (sets softDeleted=true), only sender allowed.
+ * scope="me"       → adds requesterId to hiddenFrom.
+ * Returns the updated message or false on failure.
+ */
+const deleteMessageHandler = async ({ messageId, scope, requesterId }) => {
+  try {
+    const message = await Message.findById(messageId);
+    if (!message) return false;
+
+    if (scope === 'everyone') {
+      if (message.senderId.toString() !== requesterId.toString()) return false;
+      message.softDeleted = true;
+    } else {
+      const alreadyHidden = message.hiddenFrom.some(
+        (id) => id.toString() === requesterId.toString()
+      );
+      if (!alreadyHidden) message.hiddenFrom.push(requesterId);
+    }
+
+    await message.save();
+    return message;
+  } catch (error) {
+    console.log(error.message);
+    return false;
+  }
+};
+
+/**
+ * DELETE /api/message/bulk
+ * body: { messageIds: string[] }
+ * Adds the requesting user to hiddenFrom for every listed message (hard-delete for self).
+ */
+const bulkHide = async (req, res) => {
+  const { messageIds } = req.body;
+  if (!Array.isArray(messageIds) || messageIds.length === 0) {
+    return res.status(400).json({ error: 'messageIds must be a non-empty array' });
+  }
+  try {
+    await Message.updateMany(
+      { _id: { $in: messageIds }, hiddenFrom: { $ne: req.user.id } },
+      { $push: { hiddenFrom: req.user.id } }
+    );
+    res.status(200).json({ message: 'Messages hidden' });
+  } catch (error) {
+    console.log(error.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+};
+
+/**
+ * POST /api/message/:id/star
+ * Toggle star for the requesting user on a single message.
+ * Returns { isStarred: boolean }.
+ */
+const toggleStar = async (req, res) => {
+  try {
+    const message = await Message.findById(req.params.id);
+    if (!message) return res.status(404).json({ error: 'Message not found' });
+
+    // Ensure the requester is a member of the conversation
+    const conversation = await Conversation.findById(message.conversationId);
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    const isMember = conversation.members.some((m) => m.toString() === req.user.id);
+    if (!isMember) return res.status(403).json({ error: 'Forbidden' });
+
+    const alreadyStarred = message.starredBy.some((id) => id.toString() === req.user.id);
+    if (alreadyStarred) {
+      message.starredBy = message.starredBy.filter((id) => id.toString() !== req.user.id);
+    } else {
+      message.starredBy.push(req.user.id);
+    }
+    await message.save();
+    res.status(200).json({ isStarred: !alreadyStarred, starredBy: message.starredBy });
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+};
+
+/**
+ * GET /api/message/starred
+ * Returns all messages starred by the requesting user, newest first.
+ * Each message includes a populated conversationId so the client knows
+ * which chat to navigate to.
+ */
+const getStarredMessages = async (req, res) => {
+  try {
+    const messages = await Message.find({
+      starredBy: req.user.id,
+      hiddenFrom: { $ne: req.user.id },
+      softDeleted: { $ne: true },
+    })
+      .sort({ createdAt: -1 })
+      .populate({
+        path: 'conversationId',
+        select: 'members',
+        populate: {
+          path: 'members',
+          select: '-password',
+        },
+      })
+      .lean();
+
+    res.json(messages);
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+};
+
+export {
+  allMessage,
+  streamAiResponse,
+  deleteMessage,
+  bulkHide,
+  clearChat,
+  sendMessageHandler,
+  deleteMessageHandler,
+  toggleStar,
+  getStarredMessages,
 };
