@@ -54,7 +54,7 @@ if(process.env.NODE_ENV === "production"){
 }
 
 connectDB().then(async () => {
-  await sequelize.sync({ force: true });
+  await sequelize.sync(/*{ force: true }*/);
   initSocket(httpServer);
 
   httpServer.listen(PORT, () => {
