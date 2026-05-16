@@ -1,8 +1,45 @@
+import * as React from "react"
 import { cva } from "class-variance-authority"
 import { Slot } from "@radix-ui/react-slot"
 
 import { cn } from "@/lib/utils"
 import { Separator } from "@/components/ui/separator"
+
+const buttonVariants = cva(
+  "inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        ghost: "bg-transparent text-foreground hover:bg-muted/80",
+        outline: "border border-border bg-background hover:bg-muted",
+        subtle: "bg-muted text-foreground hover:bg-muted/80",
+      },
+      size: {
+        default: "h-10 px-4 py-2",
+        sm: "h-9 px-3 rounded-md",
+        lg: "h-11 px-6 rounded-md",
+        icon: "h-10 w-10",
+        "icon-sm": "h-9 w-9",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
+)
+
+function Button({ className, variant, size, asChild = false, ...props }) {
+  const Comp = asChild ? Slot : "button"
+
+  return (
+    <Comp
+      className={cn(buttonVariants({ variant, size }), className)}
+      {...props}
+    />
+  )
+}
 
 const buttonGroupVariants = cva(
   "flex w-fit items-stretch [&>*:focus-visible]:relative [&>*:focus-visible]:z-10 [&>input]:flex-1",
@@ -70,8 +107,10 @@ function ButtonGroupSeparator({
 }
 
 export {
+  Button,
   ButtonGroup,
   ButtonGroupSeparator,
   ButtonGroupText,
+  buttonVariants,
   buttonGroupVariants,
 }
