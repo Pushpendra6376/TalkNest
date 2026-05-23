@@ -4,6 +4,7 @@ import { Eye, EyeOff, ArrowLeft, MessageCircle, Zap, Shield, Bot } from "lucide-
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Card } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
 import { useAuth } from "@/hooks/use-auth"
 import { toast } from "sonner"
@@ -155,7 +156,7 @@ export default function SignUp() {
 
             {/* ── Scrollable center column ────────────────────────────── */}
             <div className="relative z-10 h-full overflow-y-auto flex flex-col items-center justify-center px-4 py-10">
-                <div className="w-full max-w-100 flex flex-col gap-6">
+                <div className="w-full max-w-md flex flex-col gap-6">
 
                     {/* Brand */}
                     <div className="flex flex-col items-center gap-3 text-center">
@@ -167,8 +168,8 @@ export default function SignUp() {
                         </div>
 
                         <div>
-                            <h1 className="text-[2.25rem] font-bold tracking-tight leading-none text-foreground">
-                                Conversa
+                            <h1 className="text-5xl font-bold tracking-tight leading-none text-foreground">
+                                TalkNest
                             </h1>
 
                             <p className="mt-1.5 text-sm text-muted-foreground">
@@ -178,7 +179,7 @@ export default function SignUp() {
                     </div>
 
                     {/* Form card */}
-                    <div className="rounded-2xl border border-border/60 bg-card/50 backdrop-blur-xs shadow-xl shadow-black/5 dark:shadow-black/25 p-8 w-full">
+                    <Card className="rounded-2xl border border-border/60 bg-card/50 backdrop-blur-xs shadow-xl shadow-black/5 dark:shadow-black/25 p-8 w-full">
                         <div className="mb-6">
                             <h2 className="text-2xl font-bold tracking-tight text-foreground">
                                 Create an account
@@ -349,7 +350,7 @@ export default function SignUp() {
                                 )}
                             </Button>
                         </form>
-                    </div>
+                    </Card>
 
                     {/* Footer links */}
                     <div className="flex flex-col items-center gap-3 pt-2">

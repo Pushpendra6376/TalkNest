@@ -4,7 +4,7 @@
  */
 
 const API_BASE =
-  import.meta.env.VITE_API_URL ?? "http://localhost:5500";
+  import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
 /* ─── helpers ──────────────────────────────────────────────────────────── */
 
@@ -26,39 +26,39 @@ const handleResponse = async (res) => {
 
 export const authApi = {
   login: (payload) =>
-    fetch(`${API_BASE}/auth/login`, {
+    fetch(`${API_BASE}/api/auth/login`, {
       method: "POST",
       headers: headers(),
       body: JSON.stringify(payload),
     }).then(handleResponse),
 
   register: (payload) =>
-    fetch(`${API_BASE}/auth/register`, {
+    fetch(`${API_BASE}/api/auth/register`, {
       method: "POST",
       headers: headers(),
       body: JSON.stringify(payload),
     }).then(handleResponse),
 
   getMe: () =>
-    fetch(`${API_BASE}/auth/me`, {
+    fetch(`${API_BASE}/api/auth/me`, {
       headers: headers(),
     }).then(handleResponse),
 
   sendOtp: (email) =>
-    fetch(`${API_BASE}/auth/getotp`, {
+    fetch(`${API_BASE}/api/auth/getotp`, {
       method: "POST",
       headers: headers(),
       body: JSON.stringify({ email }),
     }).then(handleResponse),
 
   sendVerificationOtp: () =>
-    fetch(`${API_BASE}/auth/send-verification-otp`, {
+    fetch(`${API_BASE}/api/auth/send-verification-otp`, {
       method: "POST",
       headers: headers(),
     }).then(handleResponse),
 
   verifyEmail: (otp) =>
-    fetch(`${API_BASE}/auth/verify-email`, {
+    fetch(`${API_BASE}/api/auth/verify-email`, {
       method: "POST",
       headers: headers(),
       body: JSON.stringify({ otp }),
@@ -69,24 +69,24 @@ export const authApi = {
 
 export const conversationApi = {
   list: () =>
-    fetch(`${API_BASE}/conversation/`, {
+    fetch(`${API_BASE}/api/conversations/`, {
       headers: headers(),
     }).then(handleResponse),
 
   get: (id) =>
-    fetch(`${API_BASE}/conversation/${id}`, {
+    fetch(`${API_BASE}/api/conversations/${id}`, {
       headers: headers(),
     }).then(handleResponse),
 
   create: (memberIds) =>
-    fetch(`${API_BASE}/conversation/`, {
+    fetch(`${API_BASE}/api/conversations/`, {
       method: "POST",
       headers: headers(),
       body: JSON.stringify({ members: memberIds }),
     }).then(handleResponse),
 
   togglePin: (id) =>
-    fetch(`${API_BASE}/conversation/${id}/pin`, {
+    fetch(`${API_BASE}/api/conversations/${id}/pin`, {
       method: "POST",
       headers: headers(),
     }).then(handleResponse),
@@ -96,38 +96,38 @@ export const conversationApi = {
 
 export const messageApi = {
   list: (conversationId) =>
-    fetch(`${API_BASE}/message/${conversationId}`, {
+    fetch(`${API_BASE}/api/messages/${conversationId}`, {
       headers: headers(),
     }).then(handleResponse),
 
   delete: (messageId, scope) =>
-    fetch(`${API_BASE}/message/${messageId}`, {
+    fetch(`${API_BASE}/api/messages/${messageId}`, {
       method: "DELETE",
       headers: headers(),
       body: JSON.stringify({ scope }),
     }).then(handleResponse),
 
   bulkDelete: (messageIds) =>
-    fetch(`${API_BASE}/message/bulk/hide`, {
+    fetch(`${API_BASE}/api/messages/bulk/hide`, {
       method: "DELETE",
       headers: headers(),
       body: JSON.stringify({ messageIds }),
     }).then(handleResponse),
 
   clearChat: (conversationId) =>
-    fetch(`${API_BASE}/message/clear/${conversationId}`, {
+    fetch(`${API_BASE}/api/messages/clear/${conversationId}`, {
       method: "POST",
       headers: headers(),
     }).then(handleResponse),
 
   toggleStar: (messageId) =>
-    fetch(`${API_BASE}/message/${messageId}/star`, {
+    fetch(`${API_BASE}/api/messages/${messageId}/star`, {
       method: "POST",
       headers: headers(),
     }).then(handleResponse),
 
   getStarred: () =>
-    fetch(`${API_BASE}/message/starred`, {
+    fetch(`${API_BASE}/api/messages/starred`, {
       headers: headers(),
     }).then(handleResponse),
 };
@@ -136,7 +136,7 @@ export const messageApi = {
 
 export const userApi = {
   getOnlineStatus: (userId) =>
-    fetch(`${API_BASE}/user/online-status/${userId}`, {
+    fetch(`${API_BASE}/api/user/online-status/${userId}`, {
       headers: headers(),
     }).then(handleResponse),
 
@@ -148,13 +148,13 @@ export const userApi = {
     if (params.page) qs.set("page", String(params.page));
     if (params.limit) qs.set("limit", String(params.limit));
 
-    return fetch(`${API_BASE}/user/non-friends?${qs.toString()}`, {
+    return fetch(`${API_BASE}/api/user/non-friends?${qs.toString()}`, {
       headers: headers(),
     }).then(handleResponse);
   },
 
   updateProfile: (payload) =>
-    fetch(`${API_BASE}/user/update`, {
+    fetch(`${API_BASE}/api/user/update`, {
       method: "PUT",
       headers: headers(),
       body: JSON.stringify(payload),
@@ -162,31 +162,31 @@ export const userApi = {
 
   getPresignedUrl: (filename, filetype) =>
     fetch(
-      `${API_BASE}/user/presigned-url?filename=${encodeURIComponent(
+      `${API_BASE}/api/user/presigned-url?filename=${encodeURIComponent(
         filename
       )}&filetype=${encodeURIComponent(filetype)}`,
       { headers: headers() }
     ).then(handleResponse),
 
   blockUser: (userId) =>
-    fetch(`${API_BASE}/user/block/${userId}`, {
+    fetch(`${API_BASE}/api/user/block/${userId}`, {
       method: "POST",
       headers: headers(),
     }).then(handleResponse),
 
   unblockUser: (userId) =>
-    fetch(`${API_BASE}/user/block/${userId}`, {
+    fetch(`${API_BASE}/api/user/block/${userId}`, {
       method: "DELETE",
       headers: headers(),
     }).then(handleResponse),
 
   getBlockStatus: (userId) =>
-    fetch(`${API_BASE}/user/block-status/${userId}`, {
+    fetch(`${API_BASE}/api/user/block-status/${userId}`, {
       headers: headers(),
     }).then(handleResponse),
 
   deleteAccount: () =>
-    fetch(`${API_BASE}/user/delete`, {
+    fetch(`${API_BASE}/api/user/delete`, {
       method: "DELETE",
       headers: headers(),
     }).then(handleResponse),

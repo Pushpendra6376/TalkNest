@@ -241,7 +241,7 @@ export default function Login() {
 
             {/* ── Scrollable center column ────────────────────────────── */}
             <div className="relative z-10 h-full overflow-y-auto flex flex-col items-center justify-center px-4 py-10">
-                <div className="w-full max-w-100 flex flex-col gap-6">
+                <div className="w-full max-w-md flex flex-col gap-6">
 
                     {/* Brand */}
                     <div className="flex flex-col items-center gap-3 text-center">
@@ -287,7 +287,7 @@ export default function Login() {
                             </TabsList>
 
                             {/* ── Password Tab ───────────────────────── */}
-                            <TabsContent value="password" className="space-y-0">
+                            <TabsContent value="password" className="space-y-5">
                                 <form
                                     onSubmit={handlePasswordLogin}
                                     className="space-y-5"
@@ -369,7 +369,7 @@ export default function Login() {
                             </TabsContent>
 
                             {/* ── OTP Tab ─────────────────────────────── */}
-                            <TabsContent value="otp" className="space-y-0">
+                            <TabsContent value="otp" className="space-y-5">
                                 <div className="space-y-5">
 
                                     {!otpSent ? (

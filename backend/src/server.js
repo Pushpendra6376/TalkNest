@@ -1,5 +1,6 @@
 import express from "express";
 import dotenv from "dotenv";
+import cors from "cors";
 import { createServer } from "http";
 import { connectDB, sequelize } from "./config/db.js";
 import authRoutes from "./routes/auth.route.js";
@@ -24,6 +25,10 @@ const httpServer = createServer(app);
 const PORT = process.env.PORT || 5000;
 
 // Middleware
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || "*",
+  credentials: true,
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
