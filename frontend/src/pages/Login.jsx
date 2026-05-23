@@ -307,7 +307,7 @@ export default function Login() {
                                                 setPwEmail(e.target.value)
                                             }
                                             disabled={pwLoading}
-                                            className="h-11 rounded-lg bg-background/50 border-border"
+                                            className="h-11 rounded-lg bg-background/50 border border-input px-3 py-2"
                                         />
                                     </div>
 
@@ -331,7 +331,7 @@ export default function Login() {
                                                     setPassword(e.target.value)
                                                 }
                                                 disabled={pwLoading}
-                                                className="h-11 pr-11 rounded-lg bg-background/50 border-border"
+                                                className="h-11 pr-11 rounded-lg bg-background/50 border border-input px-3 py-2"
                                             />
 
                                             <button
@@ -392,7 +392,7 @@ export default function Login() {
                                                         setOtpEmail(e.target.value)
                                                     }
                                                     disabled={otpLoading}
-                                                    className="h-11 rounded-lg bg-background/50 border-border"
+                                                    className="h-11 rounded-lg bg-background/50 border border-input px-3 py-2"
                                                 />
                                             </div>
 

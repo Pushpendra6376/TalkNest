@@ -4,8 +4,21 @@
 
 import { io } from "socket.io-client";
 
-const SOCKET_URL =
-  import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+const getSocketUrl = () => {
+  const configured = import.meta.env.VITE_API_URL?.trim();
+
+  if (configured) {
+    return configured.replace(/\/+$/, "");
+  }
+
+  if (import.meta.env.DEV) {
+    return window.location.origin;
+  }
+
+  return "http://localhost:3000";
+};
+
+const SOCKET_URL = getSocketUrl();
 
 const socket = io(SOCKET_URL, {
   autoConnect: false,

@@ -3,8 +3,21 @@
  * Every HTTP call in the app goes through this file.
  */
 
-const API_BASE =
-  import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+const getApiBase = () => {
+  const configured = import.meta.env.VITE_API_URL?.trim();
+
+  if (configured) {
+    return configured.replace(/\/+$/, "");
+  }
+
+  if (import.meta.env.DEV) {
+    return window.location.origin;
+  }
+
+  return "http://localhost:3000";
+};
+
+const API_BASE = getApiBase();
 
 /* ─── helpers ──────────────────────────────────────────────────────────── */
 
