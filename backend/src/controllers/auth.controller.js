@@ -42,7 +42,7 @@ const register = async (req, res) => {
       });
     }
 
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
       return res.status(400).json({
         error: "User already exists",
@@ -78,10 +78,10 @@ const register = async (req, res) => {
 
     // Write 3: create the initial conversation between the user and their bot
     await Conversation.create({
-      members: [newUser._id, botUser._id],
+      members: [newUser.id, botUser.id],
       unreadCounts: [
-        { userId: newUser._id, count: 0 },
-        { userId: botUser._id, count: 0 },
+        { userId: newUser.id, count: 0 },
+        { userId: botUser.id, count: 0 },
       ],
     });
 
@@ -101,8 +101,9 @@ const register = async (req, res) => {
     // leave behind partial data (e.g. a user with no bot, or a bot with no
     // conversation). This is the compensation step in lieu of a transaction.
     try {
-      if (newUser) await User.findByIdAndDelete(newUser._id);
-      if (botUser) await User.findByIdAndDelete(botUser._id);
+      // Sequelize: destroy by primary key
+      if (newUser) await User.destroy({ where: { id: newUser.id } });
+      if (botUser) await User.destroy({ where: { id: botUser.id } });
     } catch (cleanupError) {
       // Log but don't mask the original error
       console.error("Cleanup after failed registration also failed:", cleanupError.message);
@@ -125,7 +126,7 @@ const login = async (req, res) => {
     }
 
     const user = await User.findOne({
-      email: email,
+      where: { email: email },
     });
 
     if (!user) {
@@ -135,16 +136,18 @@ const login = async (req, res) => {
     }
 
     if (otp) {
-      const isValidOtp = await bcrypt.compare(otp.toString(), user.otp.toString());
+      // ✅ Check expiry BEFORE bcrypt.compare so expired OTPs are rejected immediately
+      if (!user.otp || !user.otpExpiry || user.otpExpiry < new Date()) {
+        return res.status(400).json({ error: "OTP expired or not found. Please request a new one." });
+      }
+      const isValidOtp = await bcrypt.compare(otp.toString(), user.otp);
       if (!isValidOtp) {
         return res.status(400).json({
           error: "Invalid otp",
         });
       }
-      if (!user.otpExpiry || user.otpExpiry < new Date()) {
-        return res.status(400).json({ error: "OTP expired" });
-      }
-      user.otp = "";
+      user.otp = null;
+      user.otpExpiry = null;
       await user.save();
     } else {
       const passwordCompare = await bcrypt.compare(password, user.password);
@@ -181,8 +184,11 @@ const login = async (req, res) => {
 
 const authUser = async (req, res) => {
   try {
-    // we get req.user from the fetchuser middleware, which verifies the JWT and extracts the user ID
-    const user = await User.findById(req.user.id).select("-password");
+    // Sequelize: findByPk excludes password via attributes
+    const user = await User.findByPk(req.user.id, {
+      attributes: { exclude: ["password", "otp", "otpExpiry"] },
+    });
+    if (!user) return res.status(404).json({ error: "User not found" });
     res.json(user);
   } catch (error) {
     console.error(error.message);
@@ -194,7 +200,7 @@ const sendotp = async (req, res) => {
   try {
     console.log("sendotp request received");
     const { email } = req.body;
-    const user = await User.findOne({ email: req.body.email });
+    const user = await User.findOne({ where: { email: req.body.email } });
     if (!user) {
       return res.status(400).json({
         error: "User not found",
@@ -208,15 +214,15 @@ const sendotp = async (req, res) => {
     await user.save();
 
     let mailDetails = {
-      from: `"Conversa" <${EMAIL}>`,
+      from: `"TalkNest" <${EMAIL}>`,
       to: email,
-      subject: "Your Conversa Login OTP - " + otp,
+      subject: "Your TalkNest Login OTP - " + otp,
       html: `<!DOCTYPE html>
   <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Your Conversa OTP</title>
+    <title>Your TalkNest OTP</title>
   </head>
   <body style="margin:0;padding:0;background-color:#f0f2f5;font-family:'Segoe UI',Helvetica,Arial,sans-serif;">
     <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f2f5;padding:40px 0;">
@@ -227,7 +233,7 @@ const sendotp = async (req, res) => {
         <!-- Header -->
         <tr>
         <td align="center" style="background-color:#6366f1;padding:36px 40px;">
-          <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;letter-spacing:0.5px;">Conversa</h1>
+          <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;letter-spacing:0.5px;">TalkNest</h1>
           <p style="margin:6px 0 0;color:rgba(255,255,255,0.8);font-size:13px;">online chatting platform</p>
         </td>
         </tr>
@@ -237,7 +243,7 @@ const sendotp = async (req, res) => {
         <td style="padding:40px 40px 32px;">
           <p style="margin:0 0 8px;font-size:15px;color:#374151;">Hello,</p>
           <p style="margin:0 0 28px;font-size:15px;color:#374151;line-height:1.6;">
-          We received a request to sign in to your Conversa account. Use the one-time password below to complete your login.
+          We received a request to sign in to your TalkNest account. Use the one-time password below to complete your login.
           </p>
 
           <!-- OTP Box -->
@@ -275,7 +281,7 @@ const sendotp = async (req, res) => {
         <tr>
         <td align="center" style="background-color:#f9fafb;border-top:1px solid #e5e7eb;padding:20px 40px;">
           <p style="margin:0;font-size:12px;color:#9ca3af;">
-          &copy; ${new Date().getFullYear()} Conversa. All rights reserved.
+          &copy; ${new Date().getFullYear()} TalkNest. All rights reserved.
           </p>
           <p style="margin:4px 0 0;font-size:12px;color:#9ca3af;">
           This is an automated message — please do not reply.
@@ -307,22 +313,24 @@ const sendotp = async (req, res) => {
 
 const sendVerificationOtp = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
+    const user = await User.findByPk(req.user.id);
     if (!user) return res.status(404).json({ error: "User not found" });
     if (user.isEmailVerified)
       return res.status(400).json({ error: "Email is already verified" });
 
     const otp = Math.floor(100000 + Math.random() * 900000);
+    console.log("sendVerificationOtp: Generated raw OTP:", otp);
     const salt = await bcrypt.genSalt(10);
     const hashedOtp = await bcrypt.hash(otp.toString(), salt);
     user.otp = hashedOtp;
     user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
     await user.save();
+    console.log("sendVerificationOtp: Saved OTP hash to DB:", user.otp, "Expiry:", user.otpExpiry);
 
     const mailDetails = {
-      from: `"Conversa" <${EMAIL}>`,
+      from: `"TalkNest" <${EMAIL}>`,
       to: user.email,
-      subject: `Verify your Conversa email – OTP: ${otp}`,
+      subject: `Verify your TalkNest email – OTP: ${otp}`,
       html: `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -337,7 +345,7 @@ const sendVerificationOtp = async (req, res) => {
         <table width="520" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
           <tr>
             <td align="center" style="background-color:#6366f1;padding:36px 40px;">
-              <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;letter-spacing:0.5px;">Conversa</h1>
+              <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;letter-spacing:0.5px;">TalkNest</h1>
               <p style="margin:6px 0 0;color:rgba(255,255,255,0.8);font-size:13px;">Verify your email address</p>
             </td>
           </tr>
@@ -345,7 +353,7 @@ const sendVerificationOtp = async (req, res) => {
             <td style="padding:40px 40px 32px;">
               <p style="margin:0 0 8px;font-size:15px;color:#374151;">Hello ${user.name},</p>
               <p style="margin:0 0 28px;font-size:15px;color:#374151;line-height:1.6;">
-                Please use the OTP below to verify your email address and unlock full access to Conversa.
+                Please use the OTP below to verify your email address and unlock full access to TalkNest.
               </p>
               <table width="100%" cellpadding="0" cellspacing="0">
                 <tr>
@@ -366,7 +374,7 @@ const sendVerificationOtp = async (req, res) => {
                 <tr>
                   <td style="background-color:#fffbeb;border-left:4px solid #f59e0b;border-radius:0 6px 6px 0;padding:12px 16px;">
                     <p style="margin:0;font-size:13px;color:#92400e;">
-                      If you did not sign up for Conversa, you can safely ignore this email.
+                      If you did not sign up for TalkNest, you can safely ignore this email.
                     </p>
                   </td>
                 </tr>
@@ -375,7 +383,7 @@ const sendVerificationOtp = async (req, res) => {
           </tr>
           <tr>
             <td align="center" style="background-color:#f9fafb;border-top:1px solid #e5e7eb;padding:20px 40px;">
-              <p style="margin:0;font-size:12px;color:#9ca3af;">&copy; ${new Date().getFullYear()} Conversa. All rights reserved.</p>
+              <p style="margin:0;font-size:12px;color:#9ca3af;">&copy; ${new Date().getFullYear()} TalkNest. All rights reserved.</p>
               <p style="margin:4px 0 0;font-size:12px;color:#9ca3af;">This is an automated message — please do not reply.</p>
             </td>
           </tr>
@@ -403,30 +411,52 @@ const sendVerificationOtp = async (req, res) => {
 const verifyEmail = async (req, res) => {
   try {
     const { otp } = req.body;
+    console.log("verifyEmail request received. Entered OTP:", otp);
     if (!otp) return res.status(400).json({ error: "OTP is required" });
 
-    const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ error: "User not found" });
-    if (user.isEmailVerified)
+    const user = await User.findByPk(req.user.id);
+    if (!user) {
+      console.log("verifyEmail error: User not found for ID:", req.user.id);
+      return res.status(404).json({ error: "User not found" });
+    }
+    if (user.isEmailVerified) {
+      console.log("verifyEmail error: Email already verified for User:", user.email);
       return res.status(400).json({ error: "Email is already verified" });
+    }
 
-    if (!user.otp || !user.otpExpiry)
+    console.log("verifyEmail DB status:", {
+      storedOtpHash: user.otp,
+      otpExpiry: user.otpExpiry,
+      currentTime: new Date(),
+      isExpired: user.otpExpiry ? user.otpExpiry < new Date() : true
+    });
+
+    if (!user.otp || !user.otpExpiry) {
+      console.log("verifyEmail error: No OTP or expiry in DB");
       return res.status(400).json({ error: "No OTP found. Please request a new one." });
+    }
 
-    if (user.otpExpiry < new Date())
+    if (user.otpExpiry < new Date()) {
+      console.log("verifyEmail error: OTP expired. Expiry:", user.otpExpiry, "Current:", new Date());
       return res.status(400).json({ error: "OTP has expired. Please request a new one." });
+    }
 
     const isValid = await bcrypt.compare(otp.toString(), user.otp);
-    if (!isValid) return res.status(400).json({ error: "Invalid OTP" });
+    console.log("verifyEmail bcrypt result:", isValid);
+    if (!isValid) {
+      console.log("verifyEmail error: Invalid OTP (bcrypt comparison failed)");
+      return res.status(400).json({ error: "Invalid OTP" });
+    }
 
     user.isEmailVerified = true;
     user.otp = "";
     user.otpExpiry = null;
     await user.save();
 
+    console.log("verifyEmail success: Email verified for User:", user.email);
     res.json({ message: "Email verified successfully" });
   } catch (error) {
-    console.error(error.message);
+    console.error("verifyEmail internal error:", error);
     res.status(500).send("Internal Server Error");
   }
 };

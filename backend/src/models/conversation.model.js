@@ -17,7 +17,7 @@ const Conversation = sequelize.define("Conversation", {
     // Stores array of exactly 2 user IDs: [userId1, userId2]
   },
 
-  latestMessage: {
+  latestmessage: {
     type: DataTypes.TEXT,
     allowNull: true,
     // Preview text for chat list
@@ -40,6 +40,14 @@ const Conversation = sequelize.define("Conversation", {
     type: DataTypes.DATE,
     allowNull: false,
     defaultValue: DataTypes.NOW,
+  },
+
+  // Virtual field: mirrors `id` as `_id` for frontend compatibility
+  _id: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.id;
+    },
   },
 });
 

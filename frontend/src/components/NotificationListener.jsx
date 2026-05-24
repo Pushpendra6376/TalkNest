@@ -19,6 +19,11 @@ function initials(name) {
         .slice(0, 2)
 }
 
+// Audio is created once at module level (outside the component) so it is
+// never re-created on re-renders and never leaks.
+const notificationAudio = new Audio(notificationSound)
+notificationAudio.preload = "auto"
+
 export default function NotificationListener() {
     const navigate = useNavigate()
     const { activeChatId } = useChat()
@@ -31,8 +36,7 @@ export default function NotificationListener() {
     }, [activeChatId])
 
     useEffect(() => {
-        const audio = new Audio(notificationSound)
-        audio.preload = "auto"
+        const audio = notificationAudio
 
         const onNotification = (data) => {
             const { message, sender } = data
@@ -83,8 +87,8 @@ export default function NotificationListener() {
             // sound
             const soundEnabled = localStorage.getItem(LS_NOTIF_SOUND) !== "false"
             if (soundEnabled) {
-                audio.currentTime = 0
-                audio.play().catch(() => {})
+                notificationAudio.currentTime = 0
+                notificationAudio.play().catch(() => {})
             }
 
             // toast

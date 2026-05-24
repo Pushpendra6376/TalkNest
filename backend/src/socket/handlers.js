@@ -1,3 +1,4 @@
+import { Op } from "sequelize";
 import Conversation from "../models/conversation.model.js";
 import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
@@ -12,6 +13,20 @@ import sendMessageEmail from "../utils/sendMessageEmail.js";
 // It is used to determine whether a user still has any open connections before
 // marking them offline, so closing one browser tab doesn't falsely show them
 // as offline while another tab is still connected.
+
+/**
+ * Helper: given a Conversation instance (with JSON members array of IDs),
+ * fetch the corresponding User records.
+ */
+async function populateConvMembers(conv) {
+  const memberIds = (conv.members || []).map(Number).filter(Boolean);
+  if (memberIds.length === 0) return [];
+  return User.findAll({
+    where: { id: memberIds },
+    attributes: { exclude: ["password", "otp", "otpExpiry"] },
+  });
+}
+
 const socketHandlers = (io, socket, userSocketMap) => {
   // socket.userId is set by the JWT auth middleware in socket/index.js.
   // We never trust a user-supplied ID for security-sensitive operations.
@@ -26,18 +41,24 @@ const socketHandlers = (io, socket, userSocketMap) => {
       console.log("User joined personal room", currentUserId);
       socket.emit("user setup", currentUserId);
 
-      await User.findByIdAndUpdate(currentUserId, { isOnline: true });
+      // Sequelize: User.update replaces Mongoose findByIdAndUpdate
+      await User.update({ isOnline: true }, { where: { id: currentUserId } });
 
-      const conversations = await Conversation.find({
-        members: { $in: [currentUserId] },
-      });
+      // Fetch all conversations this user belongs to.
+      // members is a JSON column — filter in JS for portability.
+      const allConversations = await Conversation.findAll();
+      const conversations = allConversations.filter((c) =>
+        (c.members || []).some(
+          (m) => String(m) === String(currentUserId)
+        )
+      );
 
       // Collect unique friend IDs across all conversations
       const friendIds = new Set();
       conversations.forEach((conversation) => {
-        conversation.members.forEach((memberId) => {
-          if (memberId.toString() !== currentUserId) {
-            friendIds.add(memberId.toString());
+        (conversation.members || []).forEach((memberId) => {
+          if (String(memberId) !== String(currentUserId)) {
+            friendIds.add(String(memberId));
           }
         });
       });
@@ -57,12 +78,13 @@ const socketHandlers = (io, socket, userSocketMap) => {
       const { roomId } = data;
       console.log("User joined chat room", roomId);
 
-      const conv = await Conversation.findById(roomId);
+      // Sequelize: findByPk replaces Mongoose findById
+      const conv = await Conversation.findByPk(roomId);
       if (!conv) return;
 
       // Verify the authenticated user is actually a member of this conversation
-      const isMember = conv.members.some(
-        (m) => m.toString() === currentUserId
+      const isMember = (conv.members || []).some(
+        (m) => String(m) === String(currentUserId)
       );
       if (!isMember) {
         console.warn(
@@ -73,26 +95,45 @@ const socketHandlers = (io, socket, userSocketMap) => {
 
       socket.join(roomId);
 
-      // Reset unread count for this user
-      conv.unreadCounts = conv.unreadCounts.map((unread) => {
-        if (unread.userId.toString() === currentUserId) {
-          unread.count = 0;
+      // Reset unread count for this user in the JSON unreadCounts array
+      conv.unreadCounts = (conv.unreadCounts || []).map((unread) => {
+        if (String(unread.userId) === String(currentUserId)) {
+          return { ...unread, count: 0 };
         }
         return unread;
       });
-      await conv.save({ timestamps: false });
+      await conv.save();
 
-      // Mark all unseen messages in this conversation as seen by this user
+      // Mark all unseen messages in this conversation as seen by this user.
+      // We do this in JS because seenBy / hiddenFrom are JSON columns with
+      // no portable SQL operator for sub-document matching.
       const seenAt = new Date();
-      await Message.updateMany(
-        {
+
+      const messages = await Message.findAll({
+        where: {
           conversationId: roomId,
-          senderId: { $ne: currentUserId },
-          hiddenFrom: { $ne: currentUserId },
-          "seenBy.user": { $ne: currentUserId },
+          // Sender's own messages don't need a seen receipt
+          senderId: { [Op.ne]: currentUserId },
+          // Don't update already soft-deleted messages
+          softDeleted: false,
         },
-        { $push: { seenBy: { user: currentUserId, seenAt } } }
-      );
+      });
+
+      for (const msg of messages) {
+        const hiddenFrom = msg.hiddenFrom || [];
+        const seenBy = msg.seenBy || [];
+        const isHidden = hiddenFrom.some(
+          (id) => String(id) === String(currentUserId)
+        );
+        const alreadySeen = seenBy.some(
+          (s) => String(s.user) === String(currentUserId)
+        );
+
+        if (!isHidden && !alreadySeen) {
+          msg.seenBy = [...seenBy, { user: currentUserId, seenAt }];
+          await msg.save();
+        }
+      }
 
       // Notify the sender(s) in this room that their messages were seen
       io.to(roomId).emit("messages-seen", {
@@ -121,15 +162,15 @@ const socketHandlers = (io, socket, userSocketMap) => {
       // Always use the authenticated user as the sender — never trust client-supplied senderId
       const senderId = currentUserId;
 
-      const conversation = await Conversation.findById(conversationId).populate(
-        "members"
-      );
+      // Sequelize: findByPk replaces Mongoose findById
+      const conversation = await Conversation.findByPk(conversationId);
       if (!conversation) return;
 
+      // Fetch and populate conversation members for subsequent checks
+      const members = await populateConvMembers(conversation);
+
       // Verify sender is a member of this conversation
-      const isMember = conversation.members.some(
-        (m) => m._id.toString() === senderId
-      );
+      const isMember = members.some((m) => String(m.id) === String(senderId));
       if (!isMember) {
         console.warn(
           `User ${senderId} tried to send to conversation ${conversationId} they don't belong to`
@@ -139,28 +180,49 @@ const socketHandlers = (io, socket, userSocketMap) => {
 
       // ── AI bot processing ────────────────────────────────────────────────
       // Use the isBot field instead of an email-suffix heuristic.
-      const botMember = conversation.members.find(
-        (member) => member._id.toString() !== senderId && member.isBot
+      const botMember = members.find(
+        (member) => String(member.id) !== String(senderId) && member.isBot
       );
 
       if (botMember) {
-        const botId = botMember._id.toString();
+        const botId = String(botMember.id);
         const tempId = `bot-stream-${Date.now()}`;
 
         try {
-          for await (const event of streamAiResponse(text, senderId, conversationId)) {
+          for await (const event of streamAiResponse(
+            text,
+            senderId,
+            conversationId
+          )) {
             if (event.type === "user-message") {
-              // Emit real user message (has a proper MongoDB _id)
+              // Emit real user message (has a proper DB id)
               io.to(conversationId).emit("receive-message", event.message);
-              // Now start the typing indicator (conversationId required by frontend)
-              io.to(conversationId).emit("typing", { typer: botId, conversationId });
+              // Start the typing indicator
+              io.to(conversationId).emit("typing", {
+                typer: botId,
+                conversationId,
+              });
             } else if (event.type === "chunk") {
-              io.to(conversationId).emit("bot-chunk", { conversationId, tempId, chunk: event.text });
+              io.to(conversationId).emit("bot-chunk", {
+                conversationId,
+                tempId,
+                chunk: event.text,
+              });
             } else if (event.type === "done") {
-              io.to(conversationId).emit("stop-typing", { typer: botId, conversationId });
-              io.to(conversationId).emit("bot-done", { conversationId, tempId, message: event.message });
+              io.to(conversationId).emit("stop-typing", {
+                typer: botId,
+                conversationId,
+              });
+              io.to(conversationId).emit("bot-done", {
+                conversationId,
+                tempId,
+                message: event.message,
+              });
             } else if (event.type === "error") {
-              io.to(conversationId).emit("stop-typing", { typer: botId, conversationId });
+              io.to(conversationId).emit("stop-typing", {
+                typer: botId,
+                conversationId,
+              });
               io.to(conversationId).emit("bot-error", {
                 conversationId,
                 userMessageId: event.userMessageId ?? null,
@@ -169,33 +231,51 @@ const socketHandlers = (io, socket, userSocketMap) => {
           }
         } catch (err) {
           console.error("Bot streaming error:", err);
-          io.to(conversationId).emit("stop-typing", { typer: botId, conversationId });
-          io.to(conversationId).emit("bot-error", { conversationId, userMessageId: null });
+          io.to(conversationId).emit("stop-typing", {
+            typer: botId,
+            conversationId,
+          });
+          io.to(conversationId).emit("bot-error", {
+            conversationId,
+            userMessageId: null,
+          });
         }
         return;
       }
 
       // ── Personal chat processing ─────────────────────────────────────────
-      const receiverMember = conversation.members.find(
-        (member) => member._id.toString() !== senderId
+      const receiverMember = members.find(
+        (member) => String(member.id) !== String(senderId)
       );
       if (!receiverMember) return;
 
-      const receiverId = receiverMember._id;
+      const receiverId = receiverMember.id;
 
       // ── Block check ───────────────────────────────────────────────────────
       // Prevent sending if (a) the receiver has blocked the sender, or
       // (b) the sender has blocked the receiver.
+      // Sequelize: findByPk with attributes replaces Mongoose findById(id, "field1 field2")
       const [receiverDoc, senderDoc] = await Promise.all([
-        User.findById(receiverId, "blockedUsers emailNotificationsEnabled email name"),
-        User.findById(senderId, "blockedUsers"),
+        User.findByPk(receiverId, {
+          attributes: [
+            "id",
+            "blockedUsers",
+            "emailNotificationsEnabled",
+            "email",
+            "name",
+            "profilePic",
+          ],
+        }),
+        User.findByPk(senderId, { attributes: ["id", "blockedUsers"] }),
       ]);
-      const isBlockedByReceiver = receiverDoc?.blockedUsers?.some(
-        (id) => id.toString() === senderId
+
+      const isBlockedByReceiver = (receiverDoc?.blockedUsers || []).some(
+        (id) => String(id) === String(senderId)
       );
-      const senderBlockedReceiver = senderDoc?.blockedUsers?.some(
-        (id) => id.toString() === receiverId.toString()
+      const senderBlockedReceiver = (senderDoc?.blockedUsers || []).some(
+        (id) => String(id) === String(receiverId)
       );
+
       if (isBlockedByReceiver || senderBlockedReceiver) {
         socket.emit("message-blocked", { conversationId });
         return;
@@ -203,14 +283,16 @@ const socketHandlers = (io, socket, userSocketMap) => {
 
       // Determine if the receiver currently has the conversation room open.
       // Check ALL of the receiver's sockets so multi-device is handled correctly.
-      const receiverSocketIds = userSocketMap.get(receiverId.toString());
+      const receiverSocketIds = userSocketMap.get(String(receiverId));
       let isReceiverInsideChatRoom = false;
 
       if (receiverSocketIds) {
-        const conversationRoom = io.sockets.adapter.rooms.get(conversationId);
+        const conversationRoom = io.sockets.adapter.rooms.get(
+          String(conversationId)
+        );
         if (conversationRoom) {
-          isReceiverInsideChatRoom = Array.from(receiverSocketIds).some((sid) =>
-            conversationRoom.has(sid)
+          isReceiverInsideChatRoom = Array.from(receiverSocketIds).some(
+            (sid) => conversationRoom.has(sid)
           );
         }
       }
@@ -227,34 +309,30 @@ const socketHandlers = (io, socket, userSocketMap) => {
 
       io.to(conversationId).emit("receive-message", message);
 
-      conversation.unreadCounts = conversation.unreadCounts.map((unread) => {
-        if (unread.userId.toString() === receiverId.toString()) {
-          return { userId: unread.userId, count: unread.count + 1 };
-        }
-        return unread;
-      });
-
-      conversation.latestmessage = text || "sent an image";
-
       if (!isReceiverInsideChatRoom) {
-        console.log("Emitting new message notification to:", receiverId.toString());
-        const senderInfo = conversation.members.find(
-          (m) => m._id.toString() === senderId
+        console.log("Emitting new message notification to:", String(receiverId));
+        const senderInfo = members.find(
+          (m) => String(m.id) === String(senderId)
         );
-        io.to(receiverId.toString()).emit("new-message-notification", {
+        io.to(String(receiverId)).emit("new-message-notification", {
           message,
           sender: senderInfo,
-          conversation: conversation
+          conversation: conversation.toJSON(),
         });
 
         // Fire-and-forget email notification — only when receiver is completely
         // offline (no open sockets) and has email notifications enabled.
         // Never awaited so it adds zero latency to message delivery.
-        const isReceiverOffline = !receiverSocketIds || receiverSocketIds.size === 0;
-        if (isReceiverOffline && receiverDoc?.emailNotificationsEnabled && receiverDoc?.email) {
+        const isReceiverOffline =
+          !receiverSocketIds || receiverSocketIds.size === 0;
+        if (
+          isReceiverOffline &&
+          receiverDoc?.emailNotificationsEnabled &&
+          receiverDoc?.email
+        ) {
           sendMessageEmail(
             { name: receiverDoc.name, email: receiverDoc.email },
-            { name: senderInfo.name, profilePic: senderInfo.profilePic },
+            { name: senderInfo?.name, profilePic: senderInfo?.profilePic },
             text || null,
             conversationId
           );
@@ -280,47 +358,62 @@ const socketHandlers = (io, socket, userSocketMap) => {
       });
       if (!updated) return;
 
-      if (scope === 'everyone') {
-        // Find the newest non-tombstone message to determine the new preview text
+      if (scope === "everyone") {
+        // Find the newest non-tombstone message to determine the new preview text.
+        // Sequelize: findOne with where/order replaces Mongoose .findOne({}).sort()
         const latestNonDeleted = await Message.findOne({
-          conversationId,
-          softDeleted: { $ne: true },
-        }).sort({ createdAt: -1 });
+          where: {
+            conversationId,
+            softDeleted: false,
+          },
+          order: [["createdAt", "DESC"]],
+        });
 
         // If the tombstone is newer (or no other messages exist) → show tombstone text
         const newLatest =
           !latestNonDeleted ||
           new Date(updated.createdAt) >= new Date(latestNonDeleted.createdAt)
-            ? 'This message was deleted'
-            : latestNonDeleted.text || 'sent an image';
+            ? "This message was deleted"
+            : latestNonDeleted.text || "sent an image";
 
-        // Persist new preview to the conversation document
-        await Conversation.findByIdAndUpdate(
-          conversationId,
-          { latestmessage: newLatest },
-          { timestamps: false }
-        );
+        // Persist new preview to the conversation document.
+        // Sequelize: findByPk + save replaces Mongoose findByIdAndUpdate
+        const conv = await Conversation.findByPk(conversationId);
+        if (conv) {
+          conv.latestmessage = newLatest;
+          await conv.save();
+        }
 
-        // Broadcast to every member so they see the tombstone + updated preview in real-time
-        io.to(conversationId).emit('message-deleted', {
+        // Broadcast to every member so they see the tombstone + updated preview
+        io.to(conversationId).emit("message-deleted", {
           messageId,
           conversationId,
           softDeleted: true,
           latestmessage: newLatest,
         });
       } else {
-        // scope="me": find the new latest message visible to this user only
-        const latestVisible = await Message.findOne({
-          conversationId,
-          hiddenFrom: { $ne: currentUserId },
-        }).sort({ createdAt: -1 });
+        // scope="me": find the newest message visible to this user only.
+        // hiddenFrom is a JSON column — filter in JS after fetching all messages.
+        const allMsgs = await Message.findAll({
+          where: { conversationId },
+          order: [["createdAt", "DESC"]],
+        });
+
+        const latestVisible = allMsgs.find(
+          (m) =>
+            !(m.hiddenFrom || []).some(
+              (id) => String(id) === String(currentUserId)
+            )
+        );
 
         const newLatest = latestVisible
-          ? (latestVisible.softDeleted ? 'This message was deleted' : (latestVisible.text || 'sent an image'))
-          : '';
+          ? latestVisible.softDeleted
+            ? "This message was deleted"
+            : latestVisible.text || "sent an image"
+          : "";
 
         // Only emit to the requester so their sidebar preview updates
-        socket.emit('message-deleted', {
+        socket.emit("message-deleted", {
           messageId,
           conversationId,
           softDeleted: false,
@@ -328,11 +421,11 @@ const socketHandlers = (io, socket, userSocketMap) => {
         });
       }
     } catch (error) {
-      console.error('Error in delete-message handler:', error);
+      console.error("Error in delete-message handler:", error);
     }
   };
 
-  socket.on('delete-message', handleDeleteMessage);
+  socket.on("delete-message", handleDeleteMessage);
 
   // ─── Typing indicators ─────────────────────────────────────────────────────
   // Helper: emit a typing event to everyone in the conversation room, and also
@@ -363,18 +456,17 @@ const socketHandlers = (io, socket, userSocketMap) => {
   };
 
   socket.on("typing", (data) => emitTypingEvent("typing", data));
-
   socket.on("stop-typing", (data) => emitTypingEvent("stop-typing", data));
 
   // ─── Disconnect ────────────────────────────────────────────────────────────
   // Only mark the user offline when ALL their sockets have disconnected
   // (i.e. they closed every tab/device), not just one of them.
+  // NOTE: The userSocketMap cleanup (removing this socket.id) is handled by
+  // socket/index.js AFTER this handler fires. That is why we check size <= 1
+  // here — at this point the socket is still present in the set.
   socket.on("disconnect", async () => {
     console.log("Socket disconnected", socket.id, "user:", currentUserId);
     try {
-      // userSocketMap is updated by socket/index.js AFTER this event fires,
-      // so at this point the disconnecting socket is still in the set.
-      // size <= 1 means this is the last (or only) socket for the user.
       const sockets = userSocketMap.get(currentUserId);
       const isLastSocket = !sockets || sockets.size <= 1;
 
@@ -385,21 +477,26 @@ const socketHandlers = (io, socket, userSocketMap) => {
         return;
       }
 
-      await User.findByIdAndUpdate(currentUserId, {
-        isOnline: false,
-        lastSeen: new Date(),
-      });
+      // Sequelize: User.update replaces Mongoose findByIdAndUpdate
+      await User.update(
+        { isOnline: false, lastSeen: new Date() },
+        { where: { id: currentUserId } }
+      );
 
-      const conversations = await Conversation.find({
-        members: { $in: [currentUserId] },
-      });
+      // Fetch all conversations and filter by membership in JS
+      const allConversations = await Conversation.findAll();
+      const conversations = allConversations.filter((c) =>
+        (c.members || []).some(
+          (m) => String(m) === String(currentUserId)
+        )
+      );
 
       // Collect unique friend IDs across all conversations
       const friendIds = new Set();
       conversations.forEach((conversation) => {
-        conversation.members.forEach((memberId) => {
-          if (memberId.toString() !== currentUserId) {
-            friendIds.add(memberId.toString());
+        (conversation.members || []).forEach((memberId) => {
+          if (String(memberId) !== String(currentUserId)) {
+            friendIds.add(String(memberId));
           }
         });
       });

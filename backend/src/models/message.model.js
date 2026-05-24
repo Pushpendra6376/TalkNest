@@ -92,6 +92,14 @@ const Message = sequelize.define(
       allowNull: false,
       defaultValue: DataTypes.NOW,
     },
+
+    // Virtual field: mirrors `id` as `_id` for frontend compatibility
+    _id: {
+      type: DataTypes.VIRTUAL,
+      get() {
+        return this.id;
+      },
+    },
   },
   {
     timestamps: true,

@@ -1,6 +1,6 @@
 /**
  * delete-test-users.js
- * Removes all test users whose email ends in @conversa-test.dev.
+ * Removes all test users whose email ends in @talknest-test.dev.
  * Also deletes any conversations those users belong to and all
  * messages inside those conversations.
  *
@@ -13,7 +13,7 @@ import User from "../models/user.model.js";
 import Conversation from "../models/conversation.model.js";
 import Message from "../models/message.model.js";
 
-const TEST_EMAIL_SUFFIX = "@conversa-test.dev";
+const TEST_EMAIL_SUFFIX = "@talknest-test.dev";
 
 const run = async () => {
     await connectDB();

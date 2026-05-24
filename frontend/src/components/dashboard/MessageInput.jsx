@@ -55,6 +55,15 @@ export default function MessageInput({
     };
   }, [emitStopTypingNow]);
 
+  // Revoke the blob URL on unmount so it doesn't leak memory
+  // (covers the case where the component unmounts while the dialog is still open)
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     textareaRef.current?.focus();
   }, [conversationId]);

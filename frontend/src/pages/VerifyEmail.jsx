@@ -79,18 +79,12 @@ export default function VerifyEmail() {
         }
     }
 
-    const handleVerify = async (e) => {
-        e.preventDefault()
-
-        if (otpCode.length !== 6) {
-            toast.error("Please enter the complete 6-digit OTP.")
-            return
-        }
-
+    const verifyOtp = async (code) => {
+        if (!code || code.length !== 6) return;
         setLoading(true)
 
         try {
-            await authApi.verifyEmail(otpCode)
+            await authApi.verifyEmail(code)
 
             // Update local user state
             if (user) {
@@ -100,8 +94,7 @@ export default function VerifyEmail() {
                 })
             }
 
-            toast.success("Email verified successfully! Welcome to Conversa.")
-
+            toast.success("Email verified successfully! Welcome to TalkNest.")
             navigate("/user/conversations", { replace: true })
         } catch (err) {
             toast.error(
@@ -114,6 +107,17 @@ export default function VerifyEmail() {
         } finally {
             setLoading(false)
         }
+    }
+
+    const handleVerify = async (e) => {
+        if (e) e.preventDefault()
+
+        if (otpCode.length !== 6) {
+            toast.error("Please enter the complete 6-digit OTP.")
+            return
+        }
+
+        await verifyOtp(otpCode)
     }
 
     const handleResend = async () => {
@@ -156,7 +160,7 @@ export default function VerifyEmail() {
 
                     <div className="space-y-2">
                         <h1 className="text-4xl font-bold tracking-tight">
-                            Conversa
+                            TalkNest
                         </h1>
 
                         <p className="text-white/70 text-lg leading-relaxed">
@@ -207,6 +211,7 @@ export default function VerifyEmail() {
                                     maxLength={6}
                                     value={otpCode}
                                     onChange={setOtpCode}
+                                    onComplete={verifyOtp}
                                     disabled={
                                         loading ||
                                         sending ||

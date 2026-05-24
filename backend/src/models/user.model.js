@@ -104,6 +104,15 @@ const User = sequelize.define("User", {
     defaultValue: false,
   },
 
+  // Virtual field: mirrors `id` as `_id` so the frontend code that uses ._id works
+  // without any frontend changes. This is read-only and not persisted.
+  _id: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.id;
+    },
+  },
+
   createdAt: {
     type: DataTypes.DATE,
     allowNull: false,

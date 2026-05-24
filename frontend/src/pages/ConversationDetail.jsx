@@ -327,6 +327,9 @@ export default function ConversationDetail() {
   useEffect(() => {
     if (!id || !user) return
 
+    // Guard against stale async results when `id` changes before fetch completes
+    let cancelled = false
+
     setIsChatLoading(true)
 
     setMessageList([])
@@ -346,6 +349,9 @@ export default function ConversationDetail() {
       messageApi.list(id),
     ])
       .then(([conv, msgs]) => {
+        // Discard result if the user navigated away before this resolved
+        if (cancelled) return
+
         const other = conv.members.find(
           (m) => m._id !== user._id
         )
@@ -397,13 +403,22 @@ export default function ConversationDetail() {
         )
       })
       .catch(() => {
+        if (cancelled) return
+
         toast.error("Failed to load conversation.")
 
         navigate("/user/conversations", {
           replace: true,
         })
       })
-      .finally(() => setIsChatLoading(false))
+      .finally(() => {
+        if (!cancelled) setIsChatLoading(false)
+      })
+
+    // When `id` or `user` changes, mark the previous fetch as stale
+    return () => {
+      cancelled = true
+    }
   }, [id, user])
 
   /* ── scroll/highlight ───────────────── */
@@ -411,6 +426,9 @@ export default function ConversationDetail() {
     const targetId = searchParams.get("highlight")
 
     if (!targetId || messageList.length === 0) return
+
+    // Keep a ref to the timeout so we can cancel it on cleanup
+    let highlightTimer
 
     requestAnimationFrame(() => {
       const el = document.querySelector(
@@ -425,11 +443,16 @@ export default function ConversationDetail() {
 
         setHighlightedMessageId(targetId)
 
-        setTimeout(() => {
+        highlightTimer = setTimeout(() => {
           setHighlightedMessageId(null)
         }, 2200)
       }
     })
+
+    // Cancel the timer if the component unmounts or deps change before it fires
+    return () => {
+      clearTimeout(highlightTimer)
+    }
   }, [searchParams, messageList])
 
   /* ── auto scroll ───────────────── */
@@ -473,6 +496,23 @@ export default function ConversationDetail() {
       setReceiver(null)
     }
   }, [id])
+
+  const grouped = useMemo(() => {
+    const list = []
+    let lastDate = null
+
+    messageList.forEach((msg) => {
+      if (!msg.createdAt) return
+      const msgDate = new Date(msg.createdAt).toDateString()
+      if (msgDate !== lastDate) {
+        list.push(msg.createdAt)
+        lastDate = msgDate
+      }
+      list.push(msg)
+    })
+
+    return list
+  }, [messageList])
 
   return (
     <div className="flex flex-col h-full overflow-hidden">

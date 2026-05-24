@@ -1,7 +1,7 @@
 /**
  * seed-test-users.js
  * Creates 20 test users in the database.
- * All test users have email addresses ending in @conversa-test.dev so the
+ * All test users have email addresses ending in @talknest-test.dev so the
  * delete script can cleanly remove them without touching real accounts.
  *
  * Usage:
@@ -12,7 +12,7 @@ import bcrypt from "bcryptjs";
 import { connectDB } from "../config/db.js";
 import User from "../models/user.model.js";
 
-const TEST_EMAIL_SUFFIX = "@conversa-test.dev";
+const TEST_EMAIL_SUFFIX = "@talknest-test.dev";
 const TEST_PASSWORD = "Test@1234"; // shared password for all test users
 
 const TEST_USERS = [
