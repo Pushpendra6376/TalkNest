@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom"
-import { Bot, LogOut, MessagesSquare, Settings, Star } from "lucide-react"
+import { LogOut, MessagesSquare, Settings, Star } from "lucide-react"
 import {
     Sidebar,
     SidebarContent,
@@ -28,6 +28,12 @@ const NAV_ITEMS = [
         tooltip: "Conversations",
     },
     {
+        label: "Settings",
+        href: "/user/profile",
+        icon: Settings,
+        tooltip: "Settings",
+    },
+    {
         label: "Starred Messages",
         href: "/user/starred",
         icon: Star,
@@ -37,7 +43,7 @@ const NAV_ITEMS = [
 
 export default function DashboardSidebar() {
     const { user, logout } = useAuth()
-    const { conversationsList, aiChatbotConversationId } = useConversations()
+    const { conversationsList } = useConversations()
     const { state, isMobile } = useSidebar()
     const location = useLocation()
     const navigate = useNavigate()
@@ -71,17 +77,12 @@ export default function DashboardSidebar() {
     }, [user?.name])
 
     return (
-        <Sidebar collapsible="icon">
+        <Sidebar collapsible="icon" className="border-r">
             {/* ── NAV ───────────────────────── */}
-            <SidebarContent>
-                <SidebarGroup>
+            <SidebarContent className="flex flex-col items-center gap-0 py-6 px-0">
+                <SidebarGroup className="w-full p-0">
                     <SidebarGroupContent>
-                        <SidebarMenu
-                            className={cn(
-                                "mt-1 w-full",
-                                !isMobile && state === "collapsed" && "items-center"
-                            )}
-                        >
+                        <SidebarMenu className="w-full flex flex-col items-center gap-2">
                             {NAV_ITEMS.map(({ label, href, icon: Icon, tooltip }) => {
                                 const isActive =
                                     href === "/user/conversations"
@@ -92,61 +93,63 @@ export default function DashboardSidebar() {
                                 const showBadge = isConversations && unreadChatsCount > 0
 
                                 return (
-                                    <SidebarMenuItem key={label} className="min-w-10 min-h-10">
+                                    <SidebarMenuItem key={label} className="min-w-10 min-h-10 w-full">
                                         <SidebarMenuButton
                                             asChild
                                             isActive={isActive}
                                             title={tooltip}
                                             className={cn(
-                                                "min-w-10 min-h-10 p-4 transition-all duration-150",
-                                                isActive && "bg-muted/60"
+                                                "h-10 w-10 p-0 rounded-lg transition-all duration-150 hover:bg-muted mx-auto",
+                                                isActive && "bg-muted/80"
                                             )}
                                         >
-                                            <Link to={href} className="flex items-center gap-2">
-                                                {/* icon */}
-                                                <div className="relative shrink-0">
-                                                    <Icon className="min-h-5 min-w-5 text-muted-foreground" />
+                                            <Link to={href} className="flex items-center justify-center">
+                                                <div className="relative shrink-0 flex items-center justify-center">
+                                                    <Icon className="h-5 w-5 text-muted-foreground" />
 
-                                                    {/* collapsed badge */}
-                                                    {showBadge && state === "collapsed" && (
+                                                    {/* badge */}
+                                                    {showBadge && (
                                                         <span className="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-white">
                                                             {unreadChatsCount > 9 ? "9+" : unreadChatsCount}
                                                         </span>
                                                     )}
                                                 </div>
-
-                                                <span className="truncate">{label}</span>
                                             </Link>
                                         </SidebarMenuButton>
-
-                                        {/* expanded badge */}
-                                        {showBadge && (
-                                            <SidebarMenuBadge className="bg-primary text-white rounded-full">
-                                                {unreadChatsCount > 99 ? "99+" : unreadChatsCount}
-                                            </SidebarMenuBadge>
-                                        )}
                                     </SidebarMenuItem>
                                 )
                             })}
 
-                            <Separator className="mt-2 mb-3" />
+                            <Separator className="my-3 w-8" />
 
-                            {/* AI CHATBOT */}
-                            <SidebarMenuItem className="min-w-10 min-h-10">
+                            {/* USER PROFILE - BADGE STYLE */}
+                            <SidebarMenuItem className="min-w-10 min-h-10 w-full">
                                 <SidebarMenuButton
                                     asChild
-                                    className={cn(
-                                        "min-w-10 min-h-10 p-4 border-2 border-primary bg-primary text-white transition-all duration-150 hover:scale-[1.02] active:scale-[0.98]",
-                                        state === "collapsed" && "rounded-full"
-                                    )}
+                                    className="h-10 w-10 p-0.5 rounded-lg transition-all duration-150 hover:scale-105 cursor-pointer mx-auto bg-yellow-400 hover:bg-yellow-500"
+                                    title={user?.name}
                                 >
-                                    <Link
-                                        to={`/user/conversations/${aiChatbotConversationId}`}
-                                        className="flex items-center gap-2"
-                                    >
-                                        <Bot className="min-h-5 min-w-5" />
-                                        <span>AI Chatbot</span>
+                                    <Link to="/user/profile" className="flex items-center justify-center">
+                                        <Avatar className="h-9 w-9 rounded-md">
+                                            <AvatarImage src={user?.profilePic} alt={user?.name} />
+                                            <AvatarFallback className="rounded-md bg-yellow-400 text-xs font-bold text-gray-900">
+                                                {initials}
+                                            </AvatarFallback>
+                                        </Avatar>
                                     </Link>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
+
+                            <Separator className="my-3 w-8" />
+
+                            {/* LOGOUT */}
+                            <SidebarMenuItem className="min-w-10 min-h-10 w-full">
+                                <SidebarMenuButton
+                                    title="Log out"
+                                    onClick={handleLogout}
+                                    className="h-10 w-10 p-2 rounded-lg transition-all duration-150 hover:bg-destructive/10 text-destructive mx-auto"
+                                >
+                                    <LogOut className="h-5 w-5" />
                                 </SidebarMenuButton>
                             </SidebarMenuItem>
                         </SidebarMenu>
@@ -155,65 +158,7 @@ export default function DashboardSidebar() {
             </SidebarContent>
 
             {/* ── FOOTER ───────────────────── */}
-            <SidebarFooter>
-                <SidebarMenu
-                    className={cn(
-                        "w-full mb-1",
-                        !isMobile && state === "collapsed" && "items-center"
-                    )}
-                >
-                    {/* SETTINGS */}
-                    <SidebarMenuItem className="flex min-w-10 min-h-10 items-center justify-center">
-                        <SidebarMenuButton asChild title="Account Settings">
-                            <Link to="/user/profile" className="flex items-center gap-2">
-                                <Settings className="min-h-5 min-w-5 text-muted-foreground" />
-                                <span>Account Settings</span>
-                            </Link>
-                        </SidebarMenuButton>
-                    </SidebarMenuItem>
-
-                    <Separator className="mb-2" />
-
-                    {/* USER INFO */}
-                    <SidebarMenuItem>
-                        <SidebarMenuButton
-                            size="lg"
-                            className="cursor-default hover:bg-transparent p-1"
-                        >
-                            <Avatar className="size-7 shrink-0 rounded-lg">
-                                <AvatarImage src={user?.profilePic} alt={user?.name} />
-                                <AvatarFallback className="rounded-lg bg-primary/20 text-xs font-semibold">
-                                    {initials}
-                                </AvatarFallback>
-                            </Avatar>
-
-                            <div className="flex min-w-0 flex-col">
-                                <span className="truncate text-sm font-medium">
-                                    {user?.name}
-                                </span>
-
-                                {state === "expanded" && (
-                                    <span className="truncate text-xs text-muted-foreground">
-                                        {user?.email}
-                                    </span>
-                                )}
-                            </div>
-                        </SidebarMenuButton>
-                    </SidebarMenuItem>
-
-                    {/* LOGOUT */}
-                    <SidebarMenuItem>
-                        <SidebarMenuButton
-                            title="Log out"
-                            onClick={handleLogout}
-                            className="text-destructive hover:bg-destructive/10 transition-all duration-150"
-                        >
-                            <LogOut className="min-h-5 min-w-5" />
-                            <span>Log out</span>
-                        </SidebarMenuButton>
-                    </SidebarMenuItem>
-                </SidebarMenu>
-            </SidebarFooter>
+            <SidebarFooter />
 
             <SidebarRail />
         </Sidebar>
