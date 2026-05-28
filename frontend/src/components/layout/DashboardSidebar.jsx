@@ -60,10 +60,14 @@ export default function DashboardSidebar() {
     }, [conversationsList, user?._id])
 
     // ✅ optimized logout handler
-    const handleLogout = useCallback(() => {
+    const handleLogout = (e) => {
+        if (e) {
+            e.preventDefault()
+            e.stopPropagation()
+        }
         logout()
-        navigate("/", { replace: true })
-    }, [logout, navigate])
+        navigate("/login", { replace: true })
+    }
 
     // ✅ safe initials
     const initials = useMemo(() => {
@@ -123,34 +127,32 @@ export default function DashboardSidebar() {
                             <Separator className="my-3 w-8" />
 
                             {/* USER PROFILE - BADGE STYLE */}
-                            <SidebarMenuItem className="min-w-10 min-h-10 w-full">
-                                <SidebarMenuButton
-                                    asChild
-                                    className="h-10 w-10 p-0.5 rounded-lg transition-all duration-150 hover:scale-105 cursor-pointer mx-auto bg-yellow-400 hover:bg-yellow-500"
+                            <SidebarMenuItem className="min-w-10 min-h-10 w-full flex justify-center">
+                                <div
+                                    className="h-10 w-10 p-0.5 rounded-lg mx-auto bg-yellow-400 flex items-center justify-center"
                                     title={user?.name}
                                 >
-                                    <Link to="/user/profile" className="flex items-center justify-center">
-                                        <Avatar className="h-9 w-9 rounded-md">
-                                            <AvatarImage src={user?.profilePic} alt={user?.name} />
-                                            <AvatarFallback className="rounded-md bg-yellow-400 text-xs font-bold text-gray-900">
-                                                {initials}
-                                            </AvatarFallback>
-                                        </Avatar>
-                                    </Link>
-                                </SidebarMenuButton>
+                                    <Avatar className="h-9 w-9 rounded-md">
+                                        <AvatarImage src={user?.profilePic} alt={user?.name} />
+                                        <AvatarFallback className="rounded-md bg-yellow-400 text-xs font-bold text-gray-900">
+                                            {initials}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                </div>
                             </SidebarMenuItem>
 
                             <Separator className="my-3 w-8" />
 
                             {/* LOGOUT */}
-                            <SidebarMenuItem className="min-w-10 min-h-10 w-full">
-                                <SidebarMenuButton
-                                    title="Log out"
+                            <SidebarMenuItem className="min-w-10 min-h-10 w-full flex justify-center">
+                                <button
+                                    type="button"
                                     onClick={handleLogout}
-                                    className="h-10 w-10 p-2 rounded-lg transition-all duration-150 hover:bg-destructive/10 text-destructive mx-auto"
+                                    title="Log out"
+                                    className="h-10 w-10 p-2 rounded-lg transition-all duration-150 hover:bg-destructive/10 text-destructive mx-auto flex items-center justify-center cursor-pointer relative z-50"
                                 >
                                     <LogOut className="h-5 w-5" />
-                                </SidebarMenuButton>
+                                </button>
                             </SidebarMenuItem>
                         </SidebarMenu>
                     </SidebarGroupContent>

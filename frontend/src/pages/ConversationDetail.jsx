@@ -258,6 +258,75 @@ export default function ConversationDetail() {
     }
   }, [receiver])
 
+  /* ── missing handlers ───────────────── */
+  const handleDelete = useCallback(async (messageId, scope) => {
+    try {
+      await messageApi.delete(messageId, scope)
+      
+      if (scope === "everyone") {
+        setMessageList((prev) =>
+          prev.map((m) =>
+            m._id === messageId ? { ...m, softDeleted: true } : m
+          )
+        )
+      } else {
+        setMessageList((prev) => prev.filter((m) => m._id !== messageId))
+      }
+      toast.success("Message deleted")
+    } catch {
+      toast.error("Failed to delete message")
+    }
+  }, [setMessageList])
+
+  const handleStar = useCallback(async (messageId) => {
+    if (!user?._id) return
+
+    try {
+      await messageApi.toggleStar(messageId)
+      
+      setMessageList((prev) =>
+        prev.map((m) => {
+          if (m._id !== messageId) return m
+          
+          const starredBy = m.starredBy ?? []
+          const hasStarred = starredBy.includes(user._id)
+          const newStarred = hasStarred
+            ? starredBy.filter((id) => id !== user._id)
+            : [...starredBy, user._id]
+            
+          return { ...m, starredBy: newStarred }
+        })
+      )
+    } catch {
+      toast.error("Failed to star message")
+    }
+  }, [user?._id, setMessageList])
+
+  const handleClearChat = useCallback(async () => {
+    try {
+      await messageApi.clearChat(id)
+      setMessageList([])
+      toast.success("Chat cleared")
+    } catch {
+      toast.error("Failed to clear chat")
+    }
+  }, [id, setMessageList])
+
+  const handleBulkDelete = useCallback(async () => {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+
+    try {
+      await messageApi.bulkDelete(ids)
+      
+      setMessageList((prev) => prev.filter((m) => !selectedIds.has(m._id)))
+      exitSelectMode()
+      toast.success("Messages deleted")
+    } catch {
+      toast.error("Failed to delete messages")
+    }
+  }, [selectedIds, exitSelectMode, setMessageList])
+
   /* ── socket: message-blocked ───────────────── */
   useEffect(() => {
     const onBlocked = ({ conversationId: cid }) => {
