@@ -217,18 +217,70 @@ export default function ConversationsList() {
     fetchConversations();
   }, [fetchConversations]);
 
-  const displayList = conversationsList.filter((conv) => {
-    const other = getOtherMember(conv, user?._id ?? "");
+  // Sort: pinned first, then by updatedAt desc
+  const sortedList = [...conversationsList]
+    .sort((a, b) => {
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      return new Date(b.updatedAt) - new Date(a.updatedAt);
+    })
+    .filter((conv) => {
+      const other = getOtherMember(conv, user?._id ?? "");
+      if (query && !other?.name?.toLowerCase().includes(query.toLowerCase())) return false;
+      return true;
+    });
 
-    if (query && !other?.name?.toLowerCase().includes(query.toLowerCase()))
-      return false;
+  // Pin/unpin handler
+  const handleTogglePin = async (convId) => {
+    try {
+      await conversationApi.togglePin(convId);
+      // Refetch or update list
+      await fetchConversations();
+    } catch {
+      toast.error("Failed to pin/unpin chat");
+    }
+  };
 
-    return true;
-  });
+  // Block/unblock handler
+  const handleToggleBlock = async (userId, userName, isBlocked) => {
+    try {
+      if (isBlocked) {
+        await userApi.unblockUser(userId);
+        setBlockedUsers((prev) => {
+          const next = new Set(prev);
+          next.delete(userId);
+          return next;
+        });
+        toast.success(`${userName} unblocked`);
+      } else {
+        await userApi.blockUser(userId);
+        setBlockedUsers((prev) => {
+          const next = new Set(prev);
+          next.add(userId);
+          return next;
+        });
+        toast.success(`${userName} blocked`);
+      }
+      // TODO: Add socket emit for real-time block update if needed
+    } catch {
+      toast.error("Failed to update block status");
+    }
+  };
+
+  // Clear chat handler
+  const handleClearChat = async (convId) => {
+    try {
+      await messageApi.clearChat(convId);
+      toast.success("Chat cleared");
+      // Optionally refetch conversations/messages
+      await fetchConversations();
+    } catch {
+      toast.error("Failed to clear chat");
+    }
+  };
 
   return (
     <div className="flex flex-col h-full">
-
       {/* Header */}
       <div className="flex justify-between px-4 py-2">
         <h1 className="font-bold">Chats</h1>
@@ -254,26 +306,24 @@ export default function ConversationsList() {
           Array.from({ length: 5 }).map((_, i) => (
             <ConversationSkeleton key={i} />
           ))
-        ) : displayList.length === 0 ? (
+        ) : sortedList.length === 0 ? (
           <div className="text-center py-10 text-muted-foreground">
             No conversations
           </div>
         ) : (
-          displayList.map((conv) => (
+          sortedList.map((conv) => (
             <ConversationRow
               key={conv._id}
               conv={conv}
               myId={user?._id ?? ""}
               isActive={conv._id === activeId}
               isTyping={!!typingConversations[conv._id]}
-              onClick={() =>
-                navigate(`/user/conversations/${conv._id}`)
-              }
+              onClick={() => navigate(`/user/conversations/${conv._id}`)}
               openDropdownId={openDropdownId}
               setOpenDropdownId={setOpenDropdownId}
-              onToggleBlock={() => {}}
-              onClearChat={() => {}}
-              onTogglePin={() => {}}
+              onToggleBlock={handleToggleBlock}
+              onClearChat={handleClearChat}
+              onTogglePin={handleTogglePin}
               blockedUsers={blockedUsers}
             />
           ))
@@ -281,4 +331,4 @@ export default function ConversationsList() {
       </div>
     </div>
   );
-}   
+}

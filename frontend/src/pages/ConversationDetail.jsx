@@ -149,13 +149,17 @@ function DateDivider({ date }) {
 
 /* ─── main page ─────────────────────────────────────────────────────────── */
 export default function ConversationDetail() {
-  const { id } = useParams()
+  // Move selectMode and selectedIds to the top to avoid ReferenceError
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
 
-  const navigate = useNavigate()
+  const { id } = useParams();
 
-  const [searchParams] = useSearchParams()
+  const navigate = useNavigate();
 
-  const { user } = useAuth()
+  const [searchParams] = useSearchParams();
+
+  const { user } = useAuth();
 
   const {
     receiver,
@@ -173,11 +177,11 @@ export default function ConversationDetail() {
 
     isChatLoading,
     setIsChatLoading,
-  } = useChat()
+  } = useChat();
 
-  const { setConversationsList } = useConversations()
+  const { setConversationsList } = useConversations();
 
-  const scrollAreaRef = useRef(null)
+  const scrollAreaRef = useRef(null);
 
   const isInitialLoadRef = useRef(true)
 
@@ -312,13 +316,19 @@ export default function ConversationDetail() {
     }
   }, [id, setMessageList])
 
+
+  // Move exitSelectMode above handleBulkDelete to avoid ReferenceError
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false)
+    setSelectedIds(new Set())
+  }, [])
+
   const handleBulkDelete = useCallback(async () => {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
 
     try {
       await messageApi.bulkDelete(ids)
-      
       setMessageList((prev) => prev.filter((m) => !selectedIds.has(m._id)))
       exitSelectMode()
       toast.success("Messages deleted")
@@ -345,10 +355,6 @@ export default function ConversationDetail() {
   }, [id])
 
   /* ── select mode ───────────────── */
-  const [selectMode, setSelectMode] = useState(false)
-
-  const [selectedIds, setSelectedIds] = useState(new Set())
-
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
 
   const enterSelectMode = useCallback(() => {
