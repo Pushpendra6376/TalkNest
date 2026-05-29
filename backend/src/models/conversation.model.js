@@ -11,8 +11,14 @@ const Conversation = sequelize.define("Conversation", {
   members: {
     type: DataTypes.JSON,
     allowNull: false,
+    // Fix: len validator only works for strings, not JSON arrays.
+    // Using a custom validator to enforce exactly 2 members.
     validate: {
-      len: [2, 2],
+      isValidMembers(value) {
+        if (!Array.isArray(value) || value.length !== 2) {
+          throw new Error("Conversation must have exactly 2 members");
+        }
+      },
     },
     // Stores array of exactly 2 user IDs: [userId1, userId2]
   },

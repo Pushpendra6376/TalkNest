@@ -5,63 +5,90 @@
  * messages inside those conversations.
  *
  * Usage:
- *   node scripts/delete-test-users.js
+ *   node src/scripts/delete-test-users.js
+ *
+ * Fix: was entirely written using MongoDB syntax (User.find, $regex, $in,
+ * deleteMany, _id) — completely rewritten using Sequelize API.
  */
 
-import { connectDB } from "../config/db.js";
+import { connectDB, sequelize } from "../config/db.js";
 import User from "../models/user.model.js";
 import Conversation from "../models/conversation.model.js";
 import Message from "../models/message.model.js";
+import { Op } from "sequelize";
+
+// Import models so Sequelize registers associations before any query
+import "../models/user.model.js";
+import "../models/message.model.js";
+import "../models/conversation.model.js";
 
 const TEST_EMAIL_SUFFIX = "@talknest-test.dev";
 
 const run = async () => {
-    await connectDB();
+  await connectDB();
+  await sequelize.sync();
 
-    // 1. Find all test users
-    const testUsers = await User.find({ email: { $regex: `${TEST_EMAIL_SUFFIX}$` } });
+  // 1. Find all test users
+  const testUsers = await User.findAll({
+    where: {
+      email: { [Op.like]: `%${TEST_EMAIL_SUFFIX}` },
+    },
+    attributes: ["id", "email"],
+  });
 
-    if (testUsers.length === 0) {
-        console.log("No test users found — nothing to delete.");
-        process.exit(0);
-    }
+  if (testUsers.length === 0) {
+    console.log("No test users found — nothing to delete.");
+    process.exit(0);
+  }
 
-    const testUserIds = testUsers.map((u) => u._id);
-    console.log(`Found ${testUsers.length} test user(s).`);
+  const testUserIds = testUsers.map((u) => u.id);
+  console.log(`Found ${testUsers.length} test user(s).`);
 
-    // 2. Find conversations that include any test user
-    const conversations = await Conversation.find({
-        members: { $in: testUserIds },
-    });
+  // 2. Find conversations that include any test user.
+  // members is a JSON column — we fetch all conversations and filter in JS
+  // because MySQL's JSON_CONTAINS only supports a single value at a time.
+  const allConversations = await Conversation.findAll({
+    attributes: ["id", "members"],
+  });
 
-    const convIds = conversations.map((c) => c._id);
-    console.log(`Found ${convIds.length} conversation(s) involving test users.`);
+  const affectedConvIds = allConversations
+    .filter((c) =>
+      (c.members || []).some((m) => testUserIds.includes(Number(m)))
+    )
+    .map((c) => c.id);
 
+  console.log(`Found ${affectedConvIds.length} conversation(s) involving test users.`);
+
+  await sequelize.transaction(async (t) => {
     // 3. Delete messages in those conversations
-    if (convIds.length > 0) {
-        const { deletedCount: msgCount } = await Message.deleteMany({
-            conversationId: { $in: convIds },
-        });
-        console.log(`  🗑  Deleted ${msgCount} message(s).`);
+    if (affectedConvIds.length > 0) {
+      const msgCount = await Message.destroy({
+        where: { conversationId: { [Op.in]: affectedConvIds } },
+        transaction: t,
+      });
+      console.log(`  🗑  Deleted ${msgCount} message(s).`);
 
-        // 4. Delete the conversations themselves
-        const { deletedCount: convCount } = await Conversation.deleteMany({
-            _id: { $in: convIds },
-        });
-        console.log(`  🗑  Deleted ${convCount} conversation(s).`);
+      // 4. Delete the conversations themselves
+      const convCount = await Conversation.destroy({
+        where: { id: { [Op.in]: affectedConvIds } },
+        transaction: t,
+      });
+      console.log(`  🗑  Deleted ${convCount} conversation(s).`);
     }
 
     // 5. Delete the test users
-    const { deletedCount: userCount } = await User.deleteMany({
-        _id: { $in: testUserIds },
+    const userCount = await User.destroy({
+      where: { id: { [Op.in]: testUserIds } },
+      transaction: t,
     });
     console.log(`  🗑  Deleted ${userCount} test user(s).`);
+  });
 
-    console.log("\nClean-up complete.");
-    process.exit(0);
+  console.log("\nClean-up complete.");
+  process.exit(0);
 };
 
 run().catch((err) => {
-    console.error(err);
-    process.exit(1);
+  console.error(err);
+  process.exit(1);
 });

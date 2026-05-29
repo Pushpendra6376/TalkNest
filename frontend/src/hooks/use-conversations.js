@@ -3,7 +3,7 @@ import { conversationApi } from "../lib/api";
 
 export const useConversationsProvider = () => {
   const [conversationsList, setConversationsList] = useState([]);
-  const [originalChatList, setOriginalChatList] = useState([]);
+  // Fix #15: removed dead `originalChatList` state — it was set but never returned or used
   const [aiChatbotConversationId, setAIChatbotConversationId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -14,9 +14,8 @@ export const useConversationsProvider = () => {
       const data = await conversationApi.list();
 
       setConversationsList(data);
-      setOriginalChatList(data);
 
-      // find chatbot conversation
+      // Find the AI chatbot conversation (the one where a member has isBot = true)
       const chatbotConversation = data.find((c) =>
         c?.members?.some((m) => m?.isBot)
       );
@@ -34,7 +33,6 @@ export const useConversationsProvider = () => {
   return {
     conversationsList,
     setConversationsList,
-    originalChatList,
     fetchConversations,
     isLoading,
     aiChatbotConversationId,
@@ -48,6 +46,7 @@ export const ConversationsContext = createContext(null);
 export const useConversations = () => {
   const context = useContext(ConversationsContext);
   if (!context)
-    throw new Error("useConversations must be used inside ChatProvider");
+    // Fix #16: corrected error message — was "ChatProvider", should be "ConversationsProvider"
+    throw new Error("useConversations must be used inside ConversationsProvider");
   return context;
 };

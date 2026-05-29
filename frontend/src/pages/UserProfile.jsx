@@ -1,4 +1,4 @@
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import {
     Camera,
     Pencil,
@@ -244,6 +244,10 @@ const UserProfile = () => {
     const [emailNotifsEnabled, setEmailNotifsEnabled] = useState(
         user?.emailNotificationsEnabled ?? true
     )
+    // Fix #31: keep switch in sync if user object is refreshed externally
+    useEffect(() => {
+        setEmailNotifsEnabled(user?.emailNotificationsEnabled ?? true)
+    }, [user?.emailNotificationsEnabled])
 
     const [emailNotifsLoading, setEmailNotifsLoading] = useState(false)
 
@@ -303,6 +307,12 @@ const UserProfile = () => {
     const handleAvatarChange = async (file) => {
         if (!file.type.startsWith("image/")) {
             toast.error("Please select an image file")
+            return
+        }
+
+        // Fix #32: enforce 5 MB limit (same as MessageInput) to prevent huge uploads
+        if (file.size > 5 * 1024 * 1024) {
+            toast.error("Max file size is 5 MB")
             return
         }
 

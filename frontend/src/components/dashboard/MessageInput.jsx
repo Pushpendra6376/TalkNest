@@ -223,6 +223,7 @@ export default function MessageInput({
                   ref={fileInputRef}
                   type="file"
                   hidden
+                  accept="image/*"
                   onChange={handleFileSelect}
                 />
               </>
@@ -251,7 +252,14 @@ export default function MessageInput({
             <DialogTitle>Send image</DialogTitle>
           </DialogHeader>
 
-          {previewUrl && <img src={previewUrl} alt="preview" />}
+          {/* Fix #40: constrain image preview so it can't overflow the dialog */}
+          {previewUrl && (
+            <img
+              src={previewUrl}
+              alt="preview"
+              className="max-h-64 w-full object-contain rounded-lg"
+            />
+          )}
 
           <Textarea
             value={caption}

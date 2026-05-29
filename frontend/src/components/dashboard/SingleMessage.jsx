@@ -147,7 +147,7 @@ export default function SingleMessage({
                                         </ReactMarkdown>
                                     </div>
                                 ) : (
-                                    <p className="whitespace-pre-wrap break-all">
+                                    <p className="whitespace-pre-wrap break-words">
                                         {message.text}
                                     </p>
                                 )
@@ -209,8 +209,11 @@ export default function SingleMessage({
                             </Button>
                         )}
 
-                        {/* Delete */}
-                        {(!message.softDeleted || isMine) && (
+                        {/* Delete — only show if message is NOT already a tombstone,
+                             or if it IS mine and we want to let them remove it from their view */}
+                        {/* Fix #37: was showing delete on tombstone for sender — confusing UX.
+                            A tombstone already cannot be "deleted for everyone" again. */}
+                        {!message.softDeleted && (
                             <Button
                                 size="icon"
                                 variant="destructive"

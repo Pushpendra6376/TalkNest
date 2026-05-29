@@ -2,11 +2,10 @@ import dotenv from "dotenv";
 dotenv.config({ path: ".env" });
 
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
-const MONGO_URI = process.env.MONGO_URI;
-const MONGO_DB_NAME = process.env.MONGO_DB_NAME;
 const JWT_SECRET = process.env.JWT_SECRET;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3-flash-preview";
+// Fix: was "gemini-3-flash-preview" which doesn't exist
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash";
 const EMAIL = process.env.EMAIL;
 const PASSWORD = process.env.PASSWORD;
 const AWS_BUCKET_NAME = process.env.AWS_BUCKET_NAME;
@@ -16,8 +15,6 @@ const FRONTEND_URL = process.env.FRONTEND_URL || "https://talknest-chatting.netl
 
 export {
   CORS_ORIGIN,
-  MONGO_URI,
-  MONGO_DB_NAME,
   JWT_SECRET,
   AWS_ACCESS_KEY,
   AWS_SECRET,

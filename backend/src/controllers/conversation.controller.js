@@ -57,10 +57,15 @@ const createConversation = async (req, res) => {
 
     const sortedNew = [...memberIds].map(Number).sort((a, b) => a - b);
 
-    // Check if a conversation already exists with exactly these members.
-    // members is a JSON column so we fetch all and compare in JS.
-    const allConvs = await Conversation.findAll();
-    const existing = allConvs.find((c) => {
+    // Fix: use JSON_CONTAINS to find only conversations where this user is a member,
+    // instead of loading the entire Conversation table into JS (O(N) full table scan).
+    const myConversations = await Conversation.findAll({
+      where: sequelize.literal(
+        `JSON_CONTAINS(members, '${parseInt(req.user.id)}')`
+      ),
+    });
+
+    const existing = myConversations.find((c) => {
       const m = (c.members || []).map(Number).sort((a, b) => a - b);
       return (
         m.length === sortedNew.length &&
@@ -91,13 +96,12 @@ const createConversation = async (req, res) => {
     return res.status(200).json(convObj);
   } catch (error) {
     console.log(error);
-    return res.status(500).send("Internal Server Error");
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
 const getConversation = async (req, res) => {
   try {
-    // Sequelize: findByPk replaces Mongoose findById
     const conversation = await Conversation.findByPk(req.params.id);
 
     if (!conversation) {
@@ -119,7 +123,8 @@ const getConversation = async (req, res) => {
     );
     res.status(200).json(convObj);
   } catch (error) {
-    res.status(500).send("Internal Server Error");
+    console.error(error);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
@@ -166,7 +171,7 @@ const getConversationList = async (req, res) => {
     res.status(200).json(result);
   } catch (error) {
     console.log(error);
-    res.status(500).send("Internal Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
@@ -175,7 +180,6 @@ const togglePin = async (req, res) => {
   const convId = String(req.params.id);
 
   try {
-    // Sequelize: findByPk replaces Mongoose findById
     const conversation = await Conversation.findByPk(convId);
     if (!conversation)
       return res.status(404).json({ error: "Conversation not found" });
@@ -205,7 +209,7 @@ const togglePin = async (req, res) => {
     }
   } catch (error) {
     console.log(error);
-    res.status(500).send("Internal Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 

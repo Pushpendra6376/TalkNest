@@ -3,21 +3,9 @@
  * Every HTTP call in the app goes through this file.
  */
 
-const getApiBase = () => {
-  const configured = import.meta.env.VITE_API_URL?.trim();
+import { getBaseUrl } from "./utils";
 
-  if (configured) {
-    return configured.replace(/\/+$/, "");
-  }
-
-  if (import.meta.env.DEV) {
-    return window.location.origin;
-  }
-
-  return "http://localhost:3000";
-};
-
-const API_BASE = getApiBase();
+const API_BASE = getBaseUrl();
 
 /* ─── helpers ──────────────────────────────────────────────────────────── */
 
@@ -29,180 +17,219 @@ const headers = (extra = {}) => ({
   ...extra,
 });
 
+/**
+ * Fix #7: handleResponse now checks Content-Type before calling .json().
+ * If the server returns an HTML error page (e.g. 502 Bad Gateway),
+ * the old code would throw an unhandled parse error.
+ * Now it falls back to the status text so the caller always gets a clean Error.
+ */
 const handleResponse = async (res) => {
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error || "Request failed");
-  return data;
+  const contentType = res.headers.get("content-type") ?? "";
+  const isJson = contentType.includes("application/json");
+
+  if (!res.ok) {
+    if (isJson) {
+      const data = await res.json();
+      throw new Error(data?.error || data?.message || "Request failed");
+    }
+    throw new Error(`Request failed: ${res.status} ${res.statusText}`);
+  }
+
+  if (isJson) return res.json();
+  return res.text();
+};
+
+/**
+ * Wrapper around fetch that adds:
+ *   - Auth header
+ *   - 30-second AbortController timeout (Fix #9)
+ *   - handleResponse normalization
+ */
+const apiFetch = (url, options = {}) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30_000);
+
+  return fetch(url, { ...options, signal: controller.signal })
+    .then((res) => {
+      clearTimeout(timeoutId);
+      return handleResponse(res);
+    })
+    .catch((err) => {
+      clearTimeout(timeoutId);
+      if (err.name === "AbortError") {
+        throw new Error("Request timed out. Please check your connection.");
+      }
+      throw err;
+    });
 };
 
 /* ─── auth ─────────────────────────────────────────────────────────────── */
 
 export const authApi = {
   login: (payload) =>
-    fetch(`${API_BASE}/api/auth/login`, {
+    apiFetch(`${API_BASE}/api/auth/login`, {
       method: "POST",
       headers: headers(),
       body: JSON.stringify(payload),
-    }).then(handleResponse),
+    }),
 
   register: (payload) =>
-    fetch(`${API_BASE}/api/auth/register`, {
+    apiFetch(`${API_BASE}/api/auth/register`, {
       method: "POST",
       headers: headers(),
       body: JSON.stringify(payload),
-    }).then(handleResponse),
+    }),
 
   getMe: () =>
-    fetch(`${API_BASE}/api/auth/me`, {
+    apiFetch(`${API_BASE}/api/auth/me`, {
       headers: headers(),
-    }).then(handleResponse),
+    }),
 
   sendOtp: (email) =>
-    fetch(`${API_BASE}/api/auth/getotp`, {
+    apiFetch(`${API_BASE}/api/auth/getotp`, {
       method: "POST",
       headers: headers(),
       body: JSON.stringify({ email }),
-    }).then(handleResponse),
+    }),
 
   sendVerificationOtp: () =>
-    fetch(`${API_BASE}/api/auth/send-verification-otp`, {
+    apiFetch(`${API_BASE}/api/auth/send-verification-otp`, {
       method: "POST",
       headers: headers(),
-    }).then(handleResponse),
+    }),
 
   verifyEmail: (otp) =>
-    fetch(`${API_BASE}/api/auth/verify-email`, {
+    apiFetch(`${API_BASE}/api/auth/verify-email`, {
       method: "POST",
       headers: headers(),
       body: JSON.stringify({ otp }),
-    }).then(handleResponse),
+    }),
 };
 
 /* ─── conversations ────────────────────────────────────────────────────── */
 
 export const conversationApi = {
   list: () =>
-    fetch(`${API_BASE}/api/conversations/`, {
+    apiFetch(`${API_BASE}/api/conversations/`, {
       headers: headers(),
-    }).then(handleResponse),
+    }),
 
   get: (id) =>
-    fetch(`${API_BASE}/api/conversations/${id}`, {
+    apiFetch(`${API_BASE}/api/conversations/${id}`, {
       headers: headers(),
-    }).then(handleResponse),
+    }),
 
   create: (memberIds) =>
-    fetch(`${API_BASE}/api/conversations/`, {
+    apiFetch(`${API_BASE}/api/conversations/`, {
       method: "POST",
       headers: headers(),
       body: JSON.stringify({ members: memberIds }),
-    }).then(handleResponse),
+    }),
 
   togglePin: (id) =>
-    fetch(`${API_BASE}/api/conversations/${id}/pin`, {
+    apiFetch(`${API_BASE}/api/conversations/${id}/pin`, {
       method: "POST",
       headers: headers(),
-    }).then(handleResponse),
+    }),
 };
 
 /* ─── messages ─────────────────────────────────────────────────────────── */
 
 export const messageApi = {
   list: (conversationId) =>
-    fetch(`${API_BASE}/api/messages/${conversationId}`, {
+    apiFetch(`${API_BASE}/api/messages/${conversationId}`, {
       headers: headers(),
-    }).then(handleResponse),
+    }),
 
   delete: (messageId, scope) =>
-    fetch(`${API_BASE}/api/messages/${messageId}`, {
+    apiFetch(`${API_BASE}/api/messages/${messageId}`, {
       method: "DELETE",
       headers: headers(),
       body: JSON.stringify({ scope }),
-    }).then(handleResponse),
+    }),
 
   bulkDelete: (messageIds) =>
-    fetch(`${API_BASE}/api/messages/bulk/hide`, {
+    apiFetch(`${API_BASE}/api/messages/bulk/hide`, {
       method: "DELETE",
       headers: headers(),
       body: JSON.stringify({ messageIds }),
-    }).then(handleResponse),
+    }),
 
   clearChat: (conversationId) =>
-    fetch(`${API_BASE}/api/messages/clear/${conversationId}`, {
+    apiFetch(`${API_BASE}/api/messages/clear/${conversationId}`, {
       method: "POST",
       headers: headers(),
-    }).then(handleResponse),
+    }),
 
   toggleStar: (messageId) =>
-    fetch(`${API_BASE}/api/messages/${messageId}/star`, {
+    apiFetch(`${API_BASE}/api/messages/${messageId}/star`, {
       method: "POST",
       headers: headers(),
-    }).then(handleResponse),
+    }),
 
   getStarred: () =>
-    fetch(`${API_BASE}/api/messages/starred`, {
+    apiFetch(`${API_BASE}/api/messages/starred`, {
       headers: headers(),
-    }).then(handleResponse),
+    }),
 };
 
 /* ─── users ────────────────────────────────────────────────────────────── */
 
 export const userApi = {
   getOnlineStatus: (userId) =>
-    fetch(`${API_BASE}/api/user/online-status/${userId}`, {
+    apiFetch(`${API_BASE}/api/user/online-status/${userId}`, {
       headers: headers(),
-    }).then(handleResponse),
+    }),
 
   getNonFriends: (params = {}) => {
     const qs = new URLSearchParams();
-
     if (params.search) qs.set("search", params.search);
     if (params.sort) qs.set("sort", params.sort);
     if (params.page) qs.set("page", String(params.page));
     if (params.limit) qs.set("limit", String(params.limit));
 
-    return fetch(`${API_BASE}/api/user/non-friends?${qs.toString()}`, {
+    return apiFetch(`${API_BASE}/api/user/non-friends?${qs.toString()}`, {
       headers: headers(),
-    }).then(handleResponse);
+    });
   },
 
   updateProfile: (payload) =>
-    fetch(`${API_BASE}/api/user/update`, {
+    apiFetch(`${API_BASE}/api/user/update`, {
       method: "PUT",
       headers: headers(),
       body: JSON.stringify(payload),
-    }).then(handleResponse),
+    }),
 
   getPresignedUrl: (filename, filetype) =>
-    fetch(
+    apiFetch(
       `${API_BASE}/api/user/presigned-url?filename=${encodeURIComponent(
         filename
       )}&filetype=${encodeURIComponent(filetype)}`,
       { headers: headers() }
-    ).then(handleResponse),
+    ),
 
   blockUser: (userId) =>
-    fetch(`${API_BASE}/api/user/block/${userId}`, {
+    apiFetch(`${API_BASE}/api/user/block/${userId}`, {
       method: "POST",
       headers: headers(),
-    }).then(handleResponse),
+    }),
 
   unblockUser: (userId) =>
-    fetch(`${API_BASE}/api/user/block/${userId}`, {
+    apiFetch(`${API_BASE}/api/user/block/${userId}`, {
       method: "DELETE",
       headers: headers(),
-    }).then(handleResponse),
+    }),
 
   getBlockStatus: (userId) =>
-    fetch(`${API_BASE}/api/user/block-status/${userId}`, {
+    apiFetch(`${API_BASE}/api/user/block-status/${userId}`, {
       headers: headers(),
-    }).then(handleResponse),
+    }),
 
   deleteAccount: () =>
-    fetch(`${API_BASE}/api/user/delete`, {
+    apiFetch(`${API_BASE}/api/user/delete`, {
       method: "DELETE",
       headers: headers(),
-    }).then(handleResponse),
+    }),
 };
 
 export { API_BASE };

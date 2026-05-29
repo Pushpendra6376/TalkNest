@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Search, MessageCircle, Bot, SquarePen, ChevronDown, Trash2, ShieldX, Pin, PinOff } from "lucide-react";
 
@@ -213,22 +213,33 @@ export default function ConversationsList() {
     new Set((user?.blockedUsers ?? []).map(String))
   );
 
+  // Fix #33: keep blockedUsers Set in sync if user.blockedUsers changes
+  // (e.g. after blocking/unblocking from ConversationDetail)
+  useEffect(() => {
+    setBlockedUsers(new Set((user?.blockedUsers ?? []).map(String)));
+  }, [user?.blockedUsers]);
+
   useEffect(() => {
     fetchConversations();
   }, [fetchConversations]);
 
-  // Sort: pinned first, then by updatedAt desc
-  const sortedList = [...conversationsList]
-    .sort((a, b) => {
-      if (a.isPinned && !b.isPinned) return -1;
-      if (!a.isPinned && b.isPinned) return 1;
-      return new Date(b.updatedAt) - new Date(a.updatedAt);
-    })
-    .filter((conv) => {
-      const other = getOtherMember(conv, user?._id ?? "");
-      if (query && !other?.name?.toLowerCase().includes(query.toLowerCase())) return false;
-      return true;
-    });
+  // Fix #35: memoize sorted + filtered list so it isn't recomputed on every render
+  const sortedList = useMemo(
+    () =>
+      [...conversationsList]
+        .sort((a, b) => {
+          if (a.isPinned && !b.isPinned) return -1;
+          if (!a.isPinned && b.isPinned) return 1;
+          return new Date(b.updatedAt) - new Date(a.updatedAt);
+        })
+        .filter((conv) => {
+          const other = getOtherMember(conv, user?._id ?? "");
+          if (query && !other?.name?.toLowerCase().includes(query.toLowerCase()))
+            return false;
+          return true;
+        }),
+    [conversationsList, user?._id, query]
+  );
 
   // Pin/unpin handler
   const handleTogglePin = async (convId) => {
@@ -267,12 +278,21 @@ export default function ConversationsList() {
     }
   };
 
-  // Clear chat handler
+  // Fix #34: clearChat also clears the active messageList in context if the
+  // user is currently viewing that conversation (otherwise stale messages remain).
   const handleClearChat = async (convId) => {
     try {
       await messageApi.clearChat(convId);
       toast.success("Chat cleared");
-      // Optionally refetch conversations/messages
+      // Clear active message list too (ChatContext is available at this level
+      // via ConversationsProvider → ChatProvider wrapping in DashboardLayout)
+      setConversationsList((prev) =>
+        prev.map((c) =>
+          c._id === convId
+            ? { ...c, latestmessage: "", updatedAt: new Date().toISOString() }
+            : c
+        )
+      );
       await fetchConversations();
     } catch {
       toast.error("Failed to clear chat");

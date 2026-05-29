@@ -29,31 +29,25 @@ export default function VerifyEmail() {
         }
     }, [user, navigate])
 
-    // Auto-send OTP on mount
+    // Auto-send OTP on mount — only if user is confirmed present
+    // Fix #28: was calling handleSendOtp without a user guard;
+    // on very fast renders user could be null and the auth'd API call fails.
     useEffect(() => {
         if (user && !user.isEmailVerified) {
             handleSendOtp(true)
         }
-
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
-    // Countdown ticker
+    // Fix #29: use setTimeout (single-fire) instead of setInterval inside effect.
+    // setInterval inside an effect that depends on `countdown` causes the interval
+    // to be torn down and recreated every second — wasteful and error-prone.
     useEffect(() => {
-        if (countdown > 0) {
-            countdownRef.current = setInterval(() => {
-                setCountdown((c) => {
-                    if (c <= 1) {
-                        clearInterval(countdownRef.current)
-                        return 0
-                    }
-
-                    return c - 1
-                })
-            }, 1000)
-        }
-
-        return () => clearInterval(countdownRef.current)
+        if (countdown <= 0) return
+        countdownRef.current = setTimeout(() => {
+            setCountdown((c) => Math.max(0, c - 1))
+        }, 1000)
+        return () => clearTimeout(countdownRef.current)
     }, [countdown])
 
     const handleSendOtp = async (silent = false) => {

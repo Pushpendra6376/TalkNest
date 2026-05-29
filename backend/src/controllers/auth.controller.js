@@ -25,10 +25,9 @@ const register = async (req, res) => {
   //   2. Create a personal AI bot user tied to this account
   //   3. Create the initial conversation between the user and their bot
   //
-  // All three must succeed together. MongoDB transactions require a replica set,
-  // so instead we use manual compensation: track every document that gets
-  // created and delete them all if any subsequent step fails, leaving the DB
-  // in a clean state (no partial accounts).
+  // All three must succeed together. We use manual compensation: track every
+  // record that gets created and delete them all if any subsequent step fails,
+  // leaving the DB in a clean state (no partial accounts).
   let newUser = null;
   let botUser = null;
 
@@ -65,9 +64,11 @@ const register = async (req, res) => {
 
     // Write 2: create the dedicated bot user for this account.
     // Each real user gets their own bot instance so conversations stay isolated.
+    // Fix: bot email was "email + bot" which is not a valid email format.
+    // Using a proper internal domain format instead.
     botUser = await User.create({
       name: "AI Chatbot",
-      email: email + "bot",
+      email: `bot.${newUser.id}@talknest.internal`,
       password: secPass,
       about: "I am an AI Chatbot to help you",
       profilePic:
@@ -92,8 +93,17 @@ const register = async (req, res) => {
     };
 
     const authtoken = jwt.sign(data, JWT_SECRET, { expiresIn: "7d" });
+
+    // Fix: register now returns user data so frontend doesn't need an extra /me call
     res.json({
       authtoken,
+      user: {
+        _id: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+        profilePic: newUser.profilePic,
+        isEmailVerified: newUser.isEmailVerified,
+      },
     });
   } catch (error) {
     // Something went wrong during one of the DB writes.
@@ -101,7 +111,6 @@ const register = async (req, res) => {
     // leave behind partial data (e.g. a user with no bot, or a bot with no
     // conversation). This is the compensation step in lieu of a transaction.
     try {
-      // Sequelize: destroy by primary key
       if (newUser) await User.destroy({ where: { id: newUser.id } });
       if (botUser) await User.destroy({ where: { id: botUser.id } });
     } catch (cleanupError) {
@@ -109,7 +118,7 @@ const register = async (req, res) => {
       console.error("Cleanup after failed registration also failed:", cleanupError.message);
     }
     console.error(error.message);
-    res.status(500).send("Internal Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
@@ -125,8 +134,9 @@ const login = async (req, res) => {
       });
     }
 
+    // Fix: exclude deleted users from login
     const user = await User.findOne({
-      where: { email: email },
+      where: { email: email, isDeleted: false },
     });
 
     if (!user) {
@@ -136,7 +146,7 @@ const login = async (req, res) => {
     }
 
     if (otp) {
-      // ✅ Check expiry BEFORE bcrypt.compare so expired OTPs are rejected immediately
+      // Check expiry BEFORE bcrypt.compare so expired OTPs are rejected immediately
       if (!user.otp || !user.otpExpiry || user.otpExpiry < new Date()) {
         return res.status(400).json({ error: "OTP expired or not found. Please request a new one." });
       }
@@ -178,13 +188,12 @@ const login = async (req, res) => {
     });
   } catch (error) {
     console.error(error.message);
-    res.status(500).send("Internal Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
 const authUser = async (req, res) => {
   try {
-    // Sequelize: findByPk excludes password via attributes
     const user = await User.findByPk(req.user.id, {
       attributes: { exclude: ["password", "otp", "otpExpiry"] },
     });
@@ -192,15 +201,16 @@ const authUser = async (req, res) => {
     res.json(user);
   } catch (error) {
     console.error(error.message);
-    res.status(500).send("Internal Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
 const sendotp = async (req, res) => {
   try {
     console.log("sendotp request received");
+    // Fix: use destructured email consistently (was mixing req.body.email and email)
     const { email } = req.body;
-    const user = await User.findOne({ where: { email: req.body.email } });
+    const user = await User.findOne({ where: { email } });
     if (!user) {
       return res.status(400).json({
         error: "User not found",
@@ -297,7 +307,6 @@ const sendotp = async (req, res) => {
   </html>`,
     };
 
-    // Use promise-based approach
     try {
       await mailTransporter.sendMail(mailDetails);
       return res.status(200).json({ message: "OTP sent" });
@@ -307,7 +316,7 @@ const sendotp = async (req, res) => {
     }
   } catch (error) {
     console.error(error.message);
-    res.status(500).send("Internal Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
@@ -404,7 +413,7 @@ const sendVerificationOtp = async (req, res) => {
     }
   } catch (error) {
     console.error(error.message);
-    res.status(500).send("Internal Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
@@ -449,7 +458,8 @@ const verifyEmail = async (req, res) => {
     }
 
     user.isEmailVerified = true;
-    user.otp = "";
+    // Fix: was setting otp to "" (empty string) — now consistently uses null
+    user.otp = null;
     user.otpExpiry = null;
     await user.save();
 
@@ -457,7 +467,7 @@ const verifyEmail = async (req, res) => {
     res.json({ message: "Email verified successfully" });
   } catch (error) {
     console.error("verifyEmail internal error:", error);
-    res.status(500).send("Internal Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 

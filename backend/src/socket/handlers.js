@@ -1,4 +1,5 @@
 import { Op } from "sequelize";
+import { sequelize } from "../config/db.js";
 import Conversation from "../models/conversation.model.js";
 import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
@@ -27,6 +28,19 @@ async function populateConvMembers(conv) {
   });
 }
 
+/**
+ * Helper: find all conversations this user belongs to using JSON_CONTAINS.
+ * Fix: replaces the full Conversation.findAll() + JS filter pattern used in
+ * setup and disconnect handlers — avoids O(N) table scans on every connect/disconnect.
+ */
+async function getUserConversations(userId) {
+  return Conversation.findAll({
+    where: sequelize.literal(
+      `JSON_CONTAINS(members, '${parseInt(userId)}')`
+    ),
+  });
+}
+
 const socketHandlers = (io, socket, userSocketMap) => {
   // socket.userId is set by the JWT auth middleware in socket/index.js.
   // We never trust a user-supplied ID for security-sensitive operations.
@@ -41,17 +55,10 @@ const socketHandlers = (io, socket, userSocketMap) => {
       console.log("User joined personal room", currentUserId);
       socket.emit("user setup", currentUserId);
 
-      // Sequelize: User.update replaces Mongoose findByIdAndUpdate
       await User.update({ isOnline: true }, { where: { id: currentUserId } });
 
-      // Fetch all conversations this user belongs to.
-      // members is a JSON column — filter in JS for portability.
-      const allConversations = await Conversation.findAll();
-      const conversations = allConversations.filter((c) =>
-        (c.members || []).some(
-          (m) => String(m) === String(currentUserId)
-        )
-      );
+      // Fix: use JSON_CONTAINS instead of loading all conversations into JS
+      const conversations = await getUserConversations(currentUserId);
 
       // Collect unique friend IDs across all conversations
       const friendIds = new Set();
@@ -78,7 +85,6 @@ const socketHandlers = (io, socket, userSocketMap) => {
       const { roomId } = data;
       console.log("User joined chat room", roomId);
 
-      // Sequelize: findByPk replaces Mongoose findById
       const conv = await Conversation.findByPk(roomId);
       if (!conv) return;
 
@@ -105,8 +111,8 @@ const socketHandlers = (io, socket, userSocketMap) => {
       await conv.save();
 
       // Mark all unseen messages in this conversation as seen by this user.
-      // We do this in JS because seenBy / hiddenFrom are JSON columns with
-      // no portable SQL operator for sub-document matching.
+      // Fix: instead of calling msg.save() in a loop (N+1 queries), collect
+      // all messages that need updating and batch-update them in a transaction.
       const seenAt = new Date();
 
       const messages = await Message.findAll({
@@ -119,6 +125,8 @@ const socketHandlers = (io, socket, userSocketMap) => {
         },
       });
 
+      // Collect IDs of messages that need their seenBy updated
+      const msgsToUpdate = [];
       for (const msg of messages) {
         const hiddenFrom = msg.hiddenFrom || [];
         const seenBy = msg.seenBy || [];
@@ -130,9 +138,20 @@ const socketHandlers = (io, socket, userSocketMap) => {
         );
 
         if (!isHidden && !alreadySeen) {
-          msg.seenBy = [...seenBy, { user: currentUserId, seenAt }];
-          await msg.save();
+          msgsToUpdate.push({ msg, newSeenBy: [...seenBy, { user: currentUserId, seenAt }] });
         }
+      }
+
+      // Batch update in a transaction
+      if (msgsToUpdate.length > 0) {
+        await sequelize.transaction(async (t) => {
+          for (const { msg, newSeenBy } of msgsToUpdate) {
+            await Message.update(
+              { seenBy: newSeenBy },
+              { where: { id: msg.id }, transaction: t }
+            );
+          }
+        });
       }
 
       // Notify the sender(s) in this room that their messages were seen
@@ -162,7 +181,6 @@ const socketHandlers = (io, socket, userSocketMap) => {
       // Always use the authenticated user as the sender — never trust client-supplied senderId
       const senderId = currentUserId;
 
-      // Sequelize: findByPk replaces Mongoose findById
       const conversation = await Conversation.findByPk(conversationId);
       if (!conversation) return;
 
@@ -254,7 +272,6 @@ const socketHandlers = (io, socket, userSocketMap) => {
       // ── Block check ───────────────────────────────────────────────────────
       // Prevent sending if (a) the receiver has blocked the sender, or
       // (b) the sender has blocked the receiver.
-      // Sequelize: findByPk with attributes replaces Mongoose findById(id, "field1 field2")
       const [receiverDoc, senderDoc] = await Promise.all([
         User.findByPk(receiverId, {
           attributes: [
@@ -360,7 +377,6 @@ const socketHandlers = (io, socket, userSocketMap) => {
 
       if (scope === "everyone") {
         // Find the newest non-tombstone message to determine the new preview text.
-        // Sequelize: findOne with where/order replaces Mongoose .findOne({}).sort()
         const latestNonDeleted = await Message.findOne({
           where: {
             conversationId,
@@ -377,7 +393,6 @@ const socketHandlers = (io, socket, userSocketMap) => {
             : latestNonDeleted.text || "sent an image";
 
         // Persist new preview to the conversation document.
-        // Sequelize: findByPk + save replaces Mongoose findByIdAndUpdate
         const conv = await Conversation.findByPk(conversationId);
         if (conv) {
           conv.latestmessage = newLatest;
@@ -477,19 +492,13 @@ const socketHandlers = (io, socket, userSocketMap) => {
         return;
       }
 
-      // Sequelize: User.update replaces Mongoose findByIdAndUpdate
       await User.update(
         { isOnline: false, lastSeen: new Date() },
         { where: { id: currentUserId } }
       );
 
-      // Fetch all conversations and filter by membership in JS
-      const allConversations = await Conversation.findAll();
-      const conversations = allConversations.filter((c) =>
-        (c.members || []).some(
-          (m) => String(m) === String(currentUserId)
-        )
-      );
+      // Fix: use JSON_CONTAINS instead of loading all conversations into JS
+      const conversations = await getUserConversations(currentUserId);
 
       // Collect unique friend IDs across all conversations
       const friendIds = new Set();

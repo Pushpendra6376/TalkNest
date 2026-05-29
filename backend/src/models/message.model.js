@@ -35,8 +35,13 @@ const Message = sequelize.define(
     text: {
       type: DataTypes.TEXT,
       allowNull: true,
+      // Fix: enforce that at least one of text or imageUrl must be present
       validate: {
-        // Either text or imageUrl must be present
+        textOrImage(value) {
+          if (!value && !this.imageUrl) {
+            throw new Error("Message must have either text or imageUrl");
+          }
+        },
       },
     },
 
@@ -50,7 +55,7 @@ const Message = sequelize.define(
       type: DataTypes.JSON,
       allowNull: false,
       defaultValue: [],
-      // Stores array of objects: [{ userId, seenAt }, { userId, seenAt }]
+      // Stores array of objects: [{ user: userId, seenAt }, ...]
     },
 
     hiddenFrom: {

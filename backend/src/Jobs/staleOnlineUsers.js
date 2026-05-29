@@ -1,3 +1,5 @@
+import { Op } from "sequelize";
+import { sequelize } from "../config/db.js";
 import User from "../models/user.model.js";
 
 const INTERVAL_MS = 60 * 60 * 1000; // 1 hour
@@ -7,35 +9,41 @@ const INTERVAL_MS = 60 * 60 * 1000; // 1 hour
  * for more than 1 hour (based on updatedAt). This handles the edge case where
  * a socket disconnect event failed to fire (e.g. server crash, network drop,
  * ungraceful client close), leaving the user permanently marked as online.
+ *
+ * Fix: was using MongoDB syntax (updateMany, $lt, $set pipeline) which crashes
+ * in a Sequelize/MySQL project. Rewritten using Sequelize's User.update() API.
  */
 const cleanupStaleOnlineUsers = async () => {
   try {
     const oneHourAgo = new Date(Date.now() - INTERVAL_MS);
 
-    const result = await User.updateMany(
-      {
+    // Fix: Sequelize does not support updating one column to the value of
+    // another column in a simple update object. We fetch stale users first
+    // and use their actual updatedAt as the lastSeen value, then bulk-update.
+    const staleUsers = await User.findAll({
+      where: {
         isOnline: true,
-        // If updatedAt is older than 1 hour, the disconnect handler never ran
-        updatedAt: { $lt: oneHourAgo },
+        updatedAt: { [Op.lt]: oneHourAgo },
       },
-      // Array (pipeline) form is required to reference another field's value
-      // inside $set. Without it, "$updatedAt" would be treated as a literal string.
-      [
-        {
-          $set: {
-            isOnline: false,
-            // Preserve the real last-seen time instead of overwriting with now
-            lastSeen: "$updatedAt",
-          },
-        },
-      ]
-    );
+      attributes: ["id", "updatedAt"],
+    });
 
-    if (result.modifiedCount > 0) {
-      console.log(
-        `[staleOnlineUsers] Marked ${result.modifiedCount} stale user(s) as offline.`
-      );
-    }
+    if (staleUsers.length === 0) return;
+
+    // Update each stale user: set isOnline=false, lastSeen=their real updatedAt
+    // Use a transaction for consistency
+    await sequelize.transaction(async (t) => {
+      for (const user of staleUsers) {
+        await User.update(
+          { isOnline: false, lastSeen: user.updatedAt },
+          { where: { id: user.id }, transaction: t }
+        );
+      }
+    });
+
+    console.log(
+      `[staleOnlineUsers] Marked ${staleUsers.length} stale user(s) as offline.`
+    );
   } catch (error) {
     console.error("[staleOnlineUsers] Job failed:", error.message);
   }

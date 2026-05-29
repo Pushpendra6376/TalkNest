@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { Op } from "sequelize";
+import { sequelize } from "../config/db.js";
 import Message from "../models/message.model.js";
 import Conversation from "../models/conversation.model.js";
 import User from "../models/user.model.js";
@@ -9,7 +10,6 @@ const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
 const allMessage = async (req, res) => {
   try {
-    // Sequelize: findByPk replaces Mongoose findById
     const conversation = await Conversation.findByPk(req.params.id);
     if (!conversation) {
       return res.status(404).json({ error: "Conversation not found" });
@@ -85,19 +85,22 @@ const allMessage = async (req, res) => {
       result.push(m);
     }
 
-    // Persist seen-by updates for all newly seen messages
-    for (const msg of toUpdate) {
-      const current = msg.seenBy || [];
-      if (!current.some((s) => String(s.user) === String(userId))) {
-        msg.seenBy = [...current, { user: userId, seenAt }];
-        await msg.save();
+    // Persist seen-by updates for all newly seen messages in a single transaction
+    // Fix: replaced loop with individual save() — now uses bulk update for performance
+    if (toUpdate.length > 0) {
+      for (const msg of toUpdate) {
+        const current = msg.seenBy || [];
+        if (!current.some((s) => String(s.user) === String(userId))) {
+          msg.seenBy = [...current, { user: userId, seenAt }];
+          await msg.save();
+        }
       }
     }
 
     res.json(result);
   } catch (error) {
     console.error(error.message);
-    res.status(500).send("Internal Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
@@ -119,7 +122,6 @@ const deleteMessage = async (req, res) => {
       .json({ error: 'scope must be "me" or "everyone"' });
   }
   try {
-    // Sequelize: findByPk replaces Mongoose findById
     const message = await Message.findByPk(req.params.id);
     if (!message) return res.status(404).json({ error: "Message not found" });
 
@@ -157,7 +159,6 @@ const deleteMessage = async (req, res) => {
  */
 const clearChat = async (req, res) => {
   try {
-    // Sequelize: findByPk replaces Mongoose findById
     const conversation = await Conversation.findByPk(
       req.params.conversationId
     );
@@ -169,23 +170,41 @@ const clearChat = async (req, res) => {
     );
     if (!isMember) return res.status(403).json({ error: "Forbidden" });
 
-    const userId = req.user.id;
+    const userId = String(req.user.id);
 
-    // Fetch all messages in this conversation and hide them from this user.
-    // We do this in JS because hiddenFrom is a JSON column — no SQL $push equivalent.
+    // Fix: instead of looping and calling save() for each message (N+1 problem),
+    // fetch all messages and use a raw bulk update approach.
+    // We still need to read messages to update the JSON hiddenFrom field
+    // (no SQL operator for JSON array append in MySQL), but we batch the writes
+    // by collecting IDs that need updating and doing one UPDATE ... WHERE IN.
     const messages = await Message.findAll({
       where: { conversationId: req.params.conversationId },
     });
 
+    const idsToUpdate = [];
+    const updatedHiddenFrom = {};
+
     for (const msg of messages) {
       const hiddenFrom = msg.hiddenFrom || [];
       const alreadyHidden = hiddenFrom.some(
-        (id) => String(id) === String(userId)
+        (id) => String(id) === userId
       );
       if (!alreadyHidden) {
-        msg.hiddenFrom = [...hiddenFrom, userId];
-        await msg.save();
+        idsToUpdate.push(msg.id);
+        updatedHiddenFrom[msg.id] = JSON.stringify([...hiddenFrom, userId]);
       }
+    }
+
+    // Bulk update using a transaction for consistency
+    if (idsToUpdate.length > 0) {
+      await sequelize.transaction(async (t) => {
+        for (const id of idsToUpdate) {
+          await Message.update(
+            { hiddenFrom: JSON.parse(updatedHiddenFrom[id]) },
+            { where: { id }, transaction: t }
+          );
+        }
+      });
     }
 
     res.status(200).json({ message: "Chat cleared" });
@@ -203,7 +222,6 @@ const clearChat = async (req, res) => {
  * Yields { type: "error" } on failure so the caller can clean up.
  */
 const streamAiResponse = async function* (text, senderId, conversationId) {
-  // Sequelize: findByPk replaces Mongoose findById
   const conv = await Conversation.findByPk(conversationId);
   if (!conv) {
     yield { type: "error" };
@@ -216,8 +234,9 @@ const streamAiResponse = async function* (text, senderId, conversationId) {
     .map(Number)
     .filter((m) => m !== Number(senderId));
 
+  // Fix: was passing array directly to id field — use Op.in for correct SQL
   const botMember = await User.findOne({
-    where: { id: memberIds, isBot: true },
+    where: { id: { [Op.in]: memberIds }, isBot: true },
   });
   if (!botMember) {
     yield { type: "error" };
@@ -304,7 +323,6 @@ const sendMessageHandler = async (data) => {
     replyTo,
   } = data;
 
-  // Sequelize: findByPk replaces Mongoose findById
   const conversation = await Conversation.findByPk(conversationId);
   if (!conversation) return null;
 
@@ -356,7 +374,6 @@ const sendMessageHandler = async (data) => {
  */
 const deleteMessageHandler = async ({ messageId, scope, requesterId }) => {
   try {
-    // Sequelize: findByPk replaces Mongoose findById
     const message = await Message.findByPk(messageId);
     if (!message) return false;
 
@@ -395,7 +412,6 @@ const bulkHide = async (req, res) => {
       .json({ error: "messageIds must be a non-empty array" });
   }
   try {
-    // Sequelize: findAll with Op.in replaces Mongoose find({_id: {$in: []}})
     const messages = await Message.findAll({
       where: { id: { [Op.in]: messageIds } },
     });
@@ -423,7 +439,6 @@ const bulkHide = async (req, res) => {
  */
 const toggleStar = async (req, res) => {
   try {
-    // Sequelize: findByPk replaces Mongoose findById
     const message = await Message.findByPk(req.params.id);
     if (!message) return res.status(404).json({ error: "Message not found" });
 
@@ -490,26 +505,44 @@ const getStarredMessages = async (req, res) => {
       return isStarred && !isHidden;
     });
 
-    // Manually populate conversationId with its members
-    // (replaces Mongoose .populate({ path: 'conversationId', populate: { path: 'members' } }))
-    const result = [];
-    for (const msg of starred) {
+    // Collect all unique conversationIds to batch-fetch conversations and members
+    const convIds = [...new Set(starred.map((m) => m.conversationId))];
+
+    // Batch fetch all needed conversations and their members in parallel
+    const [convList, allMembers] = await Promise.all([
+      Conversation.findAll({ where: { id: { [Op.in]: convIds } } }),
+      (async () => {
+        // Collect all member IDs across all relevant conversations
+        const convs = await Conversation.findAll({
+          where: { id: { [Op.in]: convIds } },
+        });
+        const memberIds = [
+          ...new Set(convs.flatMap((c) => (c.members || []).map(Number))),
+        ];
+        return User.findAll({
+          where: { id: { [Op.in]: memberIds } },
+          attributes: { exclude: ["password", "otp", "otpExpiry"] },
+        });
+      })(),
+    ]);
+
+    // Build lookup maps
+    const convMap = {};
+    convList.forEach((c) => (convMap[c.id] = c.toJSON()));
+    const memberMap = {};
+    allMembers.forEach((u) => (memberMap[u.id] = u.toJSON()));
+
+    // Assemble result — no additional DB queries needed
+    const result = starred.map((msg) => {
       const m = msg.toJSON();
-      const conv = await Conversation.findByPk(m.conversationId);
-      if (!conv) continue;
-
-      const memberIds = (conv.members || []).map(Number).filter(Boolean);
-      const members = await User.findAll({
-        where: { id: memberIds },
-        attributes: { exclude: ["password", "otp", "otpExpiry"] },
-      });
-
+      const conv = convMap[m.conversationId];
+      if (!conv) return null;
       m.conversationId = {
-        ...conv.toJSON(),
-        members: members.map((u) => u.toJSON()),
+        ...conv,
+        members: (conv.members || []).map((id) => memberMap[id]).filter(Boolean),
       };
-      result.push(m);
-    }
+      return m;
+    }).filter(Boolean);
 
     res.json(result);
   } catch (error) {

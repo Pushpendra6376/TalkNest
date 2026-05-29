@@ -89,22 +89,14 @@ export default function Login() {
         }
     }, [user, navigate])
 
-    // OTP countdown ticker
+    // Fix #24: OTP countdown — use setTimeout (fires once) instead of setInterval
+    // (which was recreated every second inside the effect, causing redundant calls).
     useEffect(() => {
-        if (otpCountdown > 0) {
-            countdownRef.current = setInterval(() => {
-                setOtpCountdown((c) => {
-                    if (c <= 1) {
-                        clearInterval(countdownRef.current)
-                        return 0
-                    }
-
-                    return c - 1
-                })
-            }, 1000)
-        }
-
-        return () => clearInterval(countdownRef.current)
+        if (otpCountdown <= 0) return
+        countdownRef.current = setTimeout(() => {
+            setOtpCountdown((c) => Math.max(0, c - 1))
+        }, 1000)
+        return () => clearTimeout(countdownRef.current)
     }, [otpCountdown])
 
     // ── handlers ──────────────────────────────────────────────────────
@@ -440,6 +432,7 @@ export default function Login() {
                                                         value={otpCode}
                                                         onChange={setOtpCode}
                                                         disabled={otpLoading}
+                                                        autoComplete="one-time-code"
                                                     >
                                                         <InputOTPGroup>
                                                             <InputOTPSlot index={0} className="h-11 w-11 rounded-lg" />

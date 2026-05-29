@@ -3,31 +3,26 @@
  */
 
 import { io } from "socket.io-client";
+import { getBaseUrl } from "./utils";
 
-const getSocketUrl = () => {
-  const configured = import.meta.env.VITE_API_URL?.trim();
+const SOCKET_URL = getBaseUrl();
 
-  if (configured) {
-    return configured.replace(/\/+$/, "");
-  }
-
-  if (import.meta.env.DEV) {
-    return window.location.origin;
-  }
-
-  return "http://localhost:3000";
-};
-
-const SOCKET_URL = getSocketUrl();
-
+// Fix #10: Do NOT read the token at module-load time.
+// At the time this module is first imported (before login / on page-refresh),
+// localStorage may not yet have a valid token. The token is injected later
+// via connectSocket(token) once we know the user is authenticated.
 const socket = io(SOCKET_URL, {
   autoConnect: false,
-  auth: { token: localStorage.getItem("auth-token") ?? "" },
+  // auth is intentionally empty here; connectSocket sets it before connecting
+  auth: {},
 });
 
 /* ─── connection helpers ───────────────────────────────────────────────── */
 
-/** Attach (or replace) the JWT and open the connection if not already open. */
+/**
+ * Attach (or replace) the JWT and open the connection if not already open.
+ * Always call this AFTER receiving a valid token (login / bootstrap).
+ */
 export const connectSocket = (token) => {
   socket.auth = { token };
   if (!socket.connected) socket.connect();

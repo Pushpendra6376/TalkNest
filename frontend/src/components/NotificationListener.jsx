@@ -61,6 +61,9 @@ export default function NotificationListener() {
                         ...c,
                         latestmessage: message.text ?? "sent an image",
                         updatedAt: new Date().toISOString(),
+                        // Fix #41: increment unread count for every member EXCEPT the sender.
+                        // `u.userId !== sender._id` is correct for 2-person chats:
+                        // the sender's own badge should never increase.
                         unreadCounts: c.unreadCounts.map((u) =>
                             u.userId !== sender._id
                                 ? { ...u, count: u.count + 1 }

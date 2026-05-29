@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { Eye, EyeOff, ArrowLeft, MessageCircle, Zap, Shield, Bot } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -81,7 +81,10 @@ export default function SignUp() {
 
         try {
             await register(name.trim(), email.trim().toLowerCase(), password)
-            navigate("/user/conversations", { replace: true })
+            // Fix #26: navigate to /verify-email, not /user/conversations.
+            // DashboardLayout would redirect unverified users there anyway,
+            // causing a visible flash. Going directly avoids it.
+            navigate("/verify-email", { replace: true })
         } catch (err) {
             toast.error(err instanceof Error ? err.message : "Registration failed. Try again.")
         } finally {
@@ -89,37 +92,14 @@ export default function SignUp() {
         }
     }
 
-    const passwordStrength = () => {
+    // Fix #27: memoize so passwordStrength is not recomputed on every render
+    const strength = useMemo(() => {
         if (!password) return null
-
-        if (password.length < 6) {
-            return {
-                level: 1,
-                label: "Weak",
-                color: "bg-destructive",
-            }
-        }
-
-        if (
-            password.length < 10 ||
-            !/[A-Z]/.test(password) ||
-            !/[0-9]/.test(password)
-        ) {
-            return {
-                level: 2,
-                label: "Fair",
-                color: "bg-amber-400",
-            }
-        }
-
-        return {
-            level: 3,
-            label: "Strong",
-            color: "bg-green-500",
-        }
-    }
-
-    const strength = passwordStrength()
+        if (password.length < 6) return { level: 1, label: "Weak", color: "bg-destructive" }
+        if (password.length < 10 || !/[A-Z]/.test(password) || !/[0-9]/.test(password))
+            return { level: 2, label: "Fair", color: "bg-amber-400" }
+        return { level: 3, label: "Strong", color: "bg-green-500" }
+    }, [password])
 
     return (
         <div className="relative h-full overflow-hidden bg-background">

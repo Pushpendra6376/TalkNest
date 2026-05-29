@@ -2,8 +2,10 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { S3Client } from "@aws-sdk/client-s3";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
+import { Op } from "sequelize";
 import User from "../models/user.model.js";
 import Conversation from "../models/conversation.model.js";
+import { sequelize } from "../config/db.js";
 import { AWS_BUCKET_NAME, AWS_SECRET, AWS_ACCESS_KEY } from "../secrets.js";
 
 const s3Client = new S3Client({
@@ -63,7 +65,7 @@ const getOnlineStatus = async (req, res) => {
     res.status(200).json({ isOnline: isBlocked ? false : user.isOnline });
   } catch (error) {
     console.log(error);
-    res.status(500).send("Internal Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
@@ -133,12 +135,13 @@ const getNonFriendsList = async (req, res) => {
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
     const skip = (page - 1) * limit;
 
-    // Find all conversations involving this user (members is JSON)
-    const allConversations = await Conversation.findAll();
-    const myConversations = allConversations.filter((c) => {
-      const members = c.members || [];
-      return members.some((m) => String(m) === String(req.user.id));
+    // Fix: use JSON_CONTAINS instead of loading all conversations into JS
+    const myConversations = await Conversation.findAll({
+      where: sequelize.literal(
+        `JSON_CONTAINS(members, '${parseInt(req.user.id)}')`
+      ),
     });
+
     // IDs of users already in a conversation with this user
     const excludedIds = new Set();
     myConversations.forEach((c) => {
@@ -146,10 +149,6 @@ const getNonFriendsList = async (req, res) => {
     });
     // Always exclude self
     excludedIds.add(String(req.user.id));
-
-    // Fetch all non-bot, non-deleted users and filter in JS
-    // (Sequelize doesn't support JSON array containment queries portably)
-    const { Op } = await import("sequelize");
 
     const whereClause = {
       isBot: false,
@@ -176,9 +175,9 @@ const getNonFriendsList = async (req, res) => {
       attributes: { exclude: ["password", "otp", "otpExpiry"] },
     });
 
-    // Filter out excluded IDs and bot emails in JS
+    // Filter out excluded IDs and internal bot emails in JS
     const filtered = allUsers.filter(
-      (u) => !excludedIds.has(String(u.id)) && !u.email.endsWith("bot")
+      (u) => !excludedIds.has(String(u.id)) && !u.email.endsWith("@talknest.internal")
     );
 
     // Pinned user always at top of page 1
@@ -190,9 +189,13 @@ const getNonFriendsList = async (req, res) => {
       }
     }
 
+    // Fix: calculate grandTotal AFTER removing pinnedUser from filtered array
     const grandTotal = filtered.length + (pinnedUser ? 1 : 0);
     const paginated = filtered.slice(skip, skip + limit);
-    const hasMore = skip + limit < grandTotal;
+    // Fix: correct hasMore — account for pinnedUser only on page 1
+    const hasMore = page === 1
+      ? skip + limit < grandTotal
+      : skip + limit < filtered.length;
 
     res.json({
       users: paginated,
@@ -219,6 +222,10 @@ const updateprofile = async (req, res) => {
       dbuser.emailNotificationsEnabled = req.body.emailNotificationsEnabled;
 
     if (req.body.newpassword) {
+      // Fix: validate oldpassword is present before attempting bcrypt.compare
+      if (!req.body.oldpassword) {
+        return res.status(400).json({ error: "Old password is required to set a new password" });
+      }
       const passwordCompare = await bcrypt.compare(
         req.body.oldpassword,
         dbuser.password
@@ -235,7 +242,8 @@ const updateprofile = async (req, res) => {
     await dbuser.save();
     res.status(200).json({ message: "Profile Updated" });
   } catch (error) {
-    res.status(500).send("Internal Server Error");
+    console.error(error);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
@@ -257,6 +265,20 @@ const deleteAccount = async (req, res) => {
     user.otpExpiry = null;
     user.lastSeen = null;
     await user.save();
+
+    // Fix: also anonymize the associated bot user so no orphaned bots remain
+    const botUser = await User.findOne({
+      where: { email: `bot.${userId}@talknest.internal` },
+    });
+    if (botUser) {
+      botUser.isDeleted = true;
+      botUser.name = "Deleted Bot";
+      botUser.email = `deleted-bot-${crypto.randomUUID()}@talknest.internal`;
+      botUser.password = "";
+      botUser.otp = null;
+      botUser.otpExpiry = null;
+      await botUser.save();
+    }
 
     res.status(200).json({ message: "Account deleted" });
   } catch (error) {
