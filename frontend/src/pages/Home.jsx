@@ -13,7 +13,7 @@ const Home = () => {
                 {/* title */}
                 <div className="text-center">
                     <h1 className="font-bold text-6xl lg:text-8xl">TalkNest</h1>
-                    <p className="text-xl">Online Chatting App</p>
+                    <p className="text-xl">Your New Home for <b>Seamless Conversations</b></p>
                 </div>
 
                 {/* action buttons */}
