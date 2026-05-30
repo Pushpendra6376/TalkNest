@@ -40,20 +40,24 @@ const initSocket = (server) => {
   io.on("connection", (socket) => {
     console.log(`New connection: ${socket.id} (user: ${socket.userId})`);
 
-    // Track this socket in the per-user set
-    if (!userSocketMap.has(socket.userId)) {
-      userSocketMap.set(socket.userId, new Set());
+    // Track this socket in the per-user set.
+    // IMPORTANT: always use String(socket.userId) as the key so it stays
+    // consistent with the String(receiverId) lookups in handlers.js.
+    // JavaScript Map uses strict equality — Map.get("1") !== Map.get(1)!
+    const userIdKey = String(socket.userId);
+    if (!userSocketMap.has(userIdKey)) {
+      userSocketMap.set(userIdKey, new Set());
     }
-    userSocketMap.get(socket.userId).add(socket.id);
+    userSocketMap.get(userIdKey).add(socket.id);
 
     registerHandlers(io, socket, userSocketMap);
 
     socket.on("disconnect", () => {
-      const sockets = userSocketMap.get(socket.userId);
+      const sockets = userSocketMap.get(String(socket.userId));
       if (sockets) {
         sockets.delete(socket.id);
         if (sockets.size === 0) {
-          userSocketMap.delete(socket.userId);
+          userSocketMap.delete(String(socket.userId));
         }
       }
     });

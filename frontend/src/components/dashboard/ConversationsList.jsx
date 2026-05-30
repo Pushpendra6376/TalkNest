@@ -85,7 +85,7 @@ function ConversationRow({
 }) {
   const other = getOtherMember(conv, myId);
   const unread =
-    conv.unreadCounts.find((u) => u.userId === myId)?.count ?? 0;
+    (conv.unreadCounts ?? []).find((u) => String(u.userId) === String(myId))?.count ?? 0;
 
   const name = other?.name ?? "Unknown";
   const preview = isTyping
@@ -183,7 +183,7 @@ function ConversationRow({
             <p className="truncate text-xs">{preview}</p>
 
             {unread > 0 && (
-              <span className="bg-primary text-white text-[10px] px-1 rounded-full">
+              <span className="bg-primary text-primary-foreground text-[10px] px-1 rounded-full">
                 {unread > 99 ? "99+" : unread}
               </span>
             )}

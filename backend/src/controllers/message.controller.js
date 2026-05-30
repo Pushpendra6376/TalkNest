@@ -342,15 +342,22 @@ const sendMessageHandler = async (data) => {
   // Update conversation: latest message preview + unread count for receiver
   conversation.latestmessage = text || "sent an image";
   if (!isReceiverInsideChatRoom) {
-    // Increment receiver's unread count in the JSON array
-    conversation.unreadCounts = (conversation.unreadCounts || []).map(
-      (unread) => {
-        if (String(unread.userId) === String(receiverId)) {
-          return { ...unread, count: (unread.count || 0) + 1 };
-        }
-        return unread;
-      }
+    // Upsert receiver's unread count: increment if entry exists, add with count=1 if missing.
+    // The old .map() approach silently did nothing when unreadCounts was an empty array [].
+    const currentCounts = conversation.unreadCounts || [];
+    const existingIdx = currentCounts.findIndex(
+      (u) => String(u.userId) === String(receiverId)
     );
+    if (existingIdx !== -1) {
+      conversation.unreadCounts = currentCounts.map((u, i) =>
+        i === existingIdx ? { ...u, count: (u.count || 0) + 1 } : u
+      );
+    } else {
+      conversation.unreadCounts = [
+        ...currentCounts,
+        { userId: receiverId, count: 1 },
+      ];
+    }
   }
   await conversation.save();
 

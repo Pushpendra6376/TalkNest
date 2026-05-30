@@ -93,7 +93,7 @@ export default function SingleMessage({
                     className={cn(
                         "relative px-3.5 py-2 text-sm shadow-sm transition-shadow",
                         isMine
-                            ? "bg-primary text-white rounded-2xl rounded-br-sm"
+                            ? "bg-primary text-primary-foreground rounded-2xl rounded-br-sm"
                             : "bg-muted text-foreground rounded-2xl rounded-bl-sm",
                         highlighted && "animate-highlight"
                     )}
@@ -111,10 +111,10 @@ export default function SingleMessage({
                                     : "border-primary/50 bg-primary/5"
                             )}
                         >
-                            <p className={cn("font-semibold truncate", isMine ? "text-white/80" : "text-primary")}>
+                            <p className={cn("font-semibold truncate", isMine ? "text-primary-foreground/80" : "text-primary")}>
                                 {message.replyTo.senderId === myId ? "You" : receiverName}
                             </p>
-                            <p className={cn("truncate", isMine ? "text-white/60" : "text-muted-foreground")}>
+                            <p className={cn("truncate", isMine ? "text-primary-foreground/60" : "text-muted-foreground")}>
                                 {message.replyTo.softDeleted
                                     ? "This message was deleted"
                                     : message.replyTo.text || "🖼️ Photo"}
@@ -159,13 +159,13 @@ export default function SingleMessage({
                     <span
                         className={cn(
                             "flex items-center justify-end gap-1 text-[10px] mt-0.5",
-                            isMine ? "text-white/60" : "text-muted-foreground"
+                            isMine ? "text-primary-foreground/60" : "text-muted-foreground"
                         )}
                     >
                         {formatTime(message.createdAt)}
 
                         {isMine && (() => {
-                            const seen = message.seenBy?.some((s) => s.user === receiverId)
+                            const seen = message.seenBy?.some((s) => String(s.user) === String(receiverId))
                             return seen
                                 ? <CheckCheck className="size-3 text-sky-300" />
                                 : <Check className="size-3" />

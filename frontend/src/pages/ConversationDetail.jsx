@@ -138,6 +138,22 @@ function DateDivider({ date }) {
   )
 }
 
+/* ─── unread messages divider (WhatsApp-style) ─────────────────────────── */
+function UnreadDivider({ count }) {
+  return (
+    <div
+      id="unread-divider"
+      className="flex items-center gap-3 py-1.5 sticky top-2 z-10"
+    >
+      <div className="flex-1 h-px bg-blue-400/40" />
+      <span className="flex items-center gap-1.5 text-[11px] font-semibold text-blue-500 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 px-3 py-0.5 rounded-full shadow-sm whitespace-nowrap">
+        ↓ {count} unread message{count !== 1 ? "s" : ""}
+      </span>
+      <div className="flex-1 h-px bg-blue-400/40" />
+    </div>
+  )
+}
+
 /* ─── main page ─────────────────────────────────────────────────────────── */
 export default function ConversationDetail() {
   const [selectMode, setSelectMode] = useState(false)
@@ -169,6 +185,8 @@ export default function ConversationDetail() {
   const hasInitiallyScrolledRef = useRef(false)
   const prevMessageCountRef = useRef(0)
   const pendingSeenRef = useRef([])
+  // Tracks the first unread message id when a chat is opened (for the divider)
+  const firstUnreadIdRef = useRef(null)
 
   const [streamingBot, setStreamingBot] = useState(null)
   const [replyingTo, setReplyingTo] = useState(null)
@@ -329,17 +347,29 @@ export default function ConversationDetail() {
     isInitialLoadRef.current = true
     hasInitiallyScrolledRef.current = false
     prevMessageCountRef.current = 0
+    firstUnreadIdRef.current = null  // reset divider on every chat open
 
     Promise.all([conversationApi.get(id), messageApi.list(id)])
       .then(([conv, msgs]) => {
         if (cancelled) return
 
-        // Fix #20: check both ._id and .id — Sequelize returns `id` (integer),
-        // and `_id` is a virtual field that may or may not be present.
+        const myId = user._id ?? user.id
+
+        // Fix #20: check both ._id and .id
         const other = conv.members.find(
           (m) => (m._id ?? m.id) !== (user._id ?? user.id)
         )
         setReceiver(other ?? null)
+
+        // Before msgs are marked seen by the API call, find the first message
+        // that was NOT already seen by me (and not sent by me) — this is where
+        // we'll place the "unread messages" divider.
+        const firstUnread = msgs.find(
+          (m) =>
+            String(m.senderId) !== String(myId) &&
+            !(m.seenBy ?? []).some((s) => String(s.user) === String(myId))
+        )
+        firstUnreadIdRef.current = firstUnread?._id ?? firstUnread?.id ?? null
 
         const pending = pendingSeenRef.current
         const mergedMsgs =
@@ -347,7 +377,7 @@ export default function ConversationDetail() {
             ? msgs
             : msgs.map((m) => {
                 const applicable = pending.filter(
-                  (p) => !m.seenBy?.some((s) => s.user === p.seenBy)
+                  (p) => !m.seenBy?.some((s) => String(s.user) === String(p.seenBy))
                 )
                 if (applicable.length === 0) return m
                 return {
@@ -364,19 +394,21 @@ export default function ConversationDetail() {
 
         setMessageList(mergedMsgs)
 
-        // Reset unread count for this conversation in the sidebar
-        const myId = user._id ?? user.id
+        // Reset unread count for this conversation in the sidebar (upsert)
         setConversationsList((prev) =>
-          prev.map((c) =>
-            (c._id ?? c.id) === id
-              ? {
-                  ...c,
-                  unreadCounts: c.unreadCounts.map((u) =>
-                    u.userId === myId ? { ...u, count: 0 } : u
-                  ),
-                }
-              : c
-          )
+          prev.map((c) => {
+            if (String(c._id ?? c.id) !== String(id)) return c
+            const currentCounts = c.unreadCounts ?? []
+            const hasEntry = currentCounts.some((u) => String(u.userId) === String(myId))
+            return {
+              ...c,
+              unreadCounts: hasEntry
+                ? currentCounts.map((u) =>
+                    String(u.userId) === String(myId) ? { ...u, count: 0 } : u
+                  )
+                : [...currentCounts, { userId: myId, count: 0 }],
+            }
+          })
         )
       })
       .catch(() => {
@@ -394,7 +426,6 @@ export default function ConversationDetail() {
   }, [id, user])
 
   /* ── Real-time socket listeners ───────────────── */
-  // Fix #19: These listeners were MISSING — new messages never appeared in real-time.
   useEffect(() => {
     if (!id) return
 
@@ -406,14 +437,20 @@ export default function ConversationDetail() {
         if (prev.some((m) => m._id === message._id)) return prev
         return [...prev, message]
       })
-      // Update sidebar preview
-      setConversationsList((prev) =>
-        prev.map((c) =>
-          (c._id ?? c.id) === id
+      // Update sidebar: latest message + bubble conversation to top
+      setConversationsList((prev) => {
+        const updated = prev.map((c) =>
+          String(c._id ?? c.id) === String(id)
             ? { ...c, latestmessage: message.text ?? "sent an image", updatedAt: new Date().toISOString() }
             : c
         )
-      )
+        // Re-sort: pinned first, then by updatedAt desc so active conv moves to top
+        return [
+          ...updated.filter((c) => c.isPinned),
+          ...updated.filter((c) => !c.isPinned)
+            .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
+        ]
+      })
     }
 
     /* Message deleted (soft or hard) */
@@ -430,7 +467,7 @@ export default function ConversationDetail() {
       }
     }
 
-    /* Someone has seen messages */
+    /* Someone has seen messages — Fix: use String() for type-safe comparison */
     const onMessagesSeen = ({ conversationId: cid, seenBy, seenAt }) => {
       if (String(cid) !== String(id)) return
       setMessageList((prev) =>
@@ -465,13 +502,18 @@ export default function ConversationDetail() {
         if (prev.some((m) => m._id === message._id)) return prev
         return [...prev, message]
       })
-      setConversationsList((prev) =>
-        prev.map((c) =>
-          (c._id ?? c.id) === id
+      setConversationsList((prev) => {
+        const updated = prev.map((c) =>
+          String(c._id ?? c.id) === String(id)
             ? { ...c, latestmessage: message.text ?? "sent an image", updatedAt: new Date().toISOString() }
             : c
         )
-      )
+        return [
+          ...updated.filter((c) => c.isPinned),
+          ...updated.filter((c) => !c.isPinned)
+            .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
+        ]
+      })
     }
 
     /* Bot stream errored */
@@ -510,6 +552,31 @@ export default function ConversationDetail() {
     }
   }, [id, setMessageList, setConversationsList])
 
+  /* ── Typing indicator listener (local to active conversation) ─────────── */
+  useEffect(() => {
+    if (!id || !user) return
+    const myId = user?._id ?? user?.id ?? ""
+
+    const onTyping = (data) => {
+      if (String(data.conversationId) !== String(id)) return
+      if (String(data.typer) === String(myId)) return
+      setIsOtherUserTyping(true)
+    }
+    const onStopTyping = (data) => {
+      if (String(data.conversationId) !== String(id)) return
+      setIsOtherUserTyping(false)
+    }
+
+    socket.on("typing", onTyping)
+    socket.on("stop-typing", onStopTyping)
+
+    return () => {
+      socket.off("typing", onTyping)
+      socket.off("stop-typing", onStopTyping)
+      setIsOtherUserTyping(false)
+    }
+  }, [id, user, setIsOtherUserTyping])
+
   /* ── scroll to highlighted message ───────────────── */
   // Fix #21: parse targetId once — don't recalculate on every messageList change
   const targetHighlightId = searchParams.get("highlight")
@@ -545,7 +612,22 @@ export default function ConversationDetail() {
     if (!hasInitiallyScrolledRef.current) {
       hasInitiallyScrolledRef.current = true
       isInitialLoadRef.current = false
-      if (!targetHighlightId) scrollToBottom("instant")
+
+      if (targetHighlightId) return  // highlight scroll handled separately
+
+      // If there's an unread divider, scroll to it; otherwise go to bottom
+      if (firstUnreadIdRef.current) {
+        requestAnimationFrame(() => {
+          const divider = document.getElementById("unread-divider")
+          if (divider) {
+            divider.scrollIntoView({ behavior: "instant", block: "center" })
+          } else {
+            scrollToBottom("instant")
+          }
+        })
+      } else {
+        scrollToBottom("instant")
+      }
       return
     }
 
@@ -553,22 +635,32 @@ export default function ConversationDetail() {
   }, [messageList, scrollToBottom, targetHighlightId])
 
   /* ── join/leave room ───────────────── */
+  // Also re-join on socket reconnect so messages keep arriving after network
+  // blips (socket rooms are cleared on the server when connection drops).
   useEffect(() => {
     if (!id) return
 
     emitJoinChat(id)
 
+    const onReconnect = () => {
+      emitJoinChat(id)
+    }
+    socket.on("connect", onReconnect)
+
     return () => {
+      socket.off("connect", onReconnect)
       emitLeaveChat(id)
       setActiveChatId("")
       setReceiver(null)
     }
   }, [id])
 
-  /* ── group messages by date ───────────────── */
+  /* ── group messages by date + unread divider ───────────────── */
   const grouped = useMemo(() => {
     const list = []
     let lastDate = null
+    let unreadCount = 0
+    let dividerInserted = false
 
     messageList.forEach((msg) => {
       if (!msg.createdAt) return
@@ -577,11 +669,29 @@ export default function ConversationDetail() {
         list.push(msg.createdAt)
         lastDate = msgDate
       }
+
+      // Insert the "unread messages" divider right before the first unread msg
+      if (
+        firstUnreadIdRef.current &&
+        !dividerInserted &&
+        ((msg._id ?? msg.id) === firstUnreadIdRef.current)
+      ) {
+        // Count how many messages from here to end are unread (not sent by me)
+        const myId = user?._id ?? user?.id ?? ""
+        unreadCount = messageList.filter(
+          (m) =>
+            String(m.senderId) !== String(myId) &&
+            !(m.seenBy ?? []).some((s) => String(s.user) === String(myId))
+        ).length
+        list.push({ type: "unread-divider", count: unreadCount })
+        dividerInserted = true
+      }
+
       list.push(msg)
     })
 
     return list
-  }, [messageList])
+  }, [messageList, user])
 
   const myId = user?._id ?? user?.id ?? ""
 
@@ -610,8 +720,14 @@ export default function ConversationDetail() {
           </div>
         ) : (
           grouped.map((item, idx) => {
+            // Date string divider
             if (typeof item === "string") {
               return <DateDivider key={`div-${idx}`} date={item} />
+            }
+
+            // Unread messages divider
+            if (item?.type === "unread-divider") {
+              return <UnreadDivider key="unread-divider" count={item.count} />
             }
 
             const msg = item

@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Bot } from "lucide-react"
 import socket from "@/lib/socket"
+import { useAuth } from "@/hooks/use-auth"
 import { useChat } from "@/hooks/use-chat"
 import { useConversations } from "@/hooks/use-conversations"
 import notificationSound from "@/assets/newmessage.wav"
@@ -26,14 +27,92 @@ notificationAudio.preload = "auto"
 
 export default function NotificationListener() {
     const navigate = useNavigate()
-    const { activeChatId } = useChat()
+    const { user } = useAuth()
+    const { activeChatId, setMessageList } = useChat()
     const { setConversationsList } = useConversations()
 
     const activeChatIdRef = useRef(activeChatId)
+    const myIdRef = useRef(user?._id ?? user?.id ?? null)
 
     useEffect(() => {
         activeChatIdRef.current = activeChatId
     }, [activeChatId])
+
+    useEffect(() => {
+        myIdRef.current = user?._id ?? user?.id ?? null
+    }, [user])
+
+    // Global messages-seen listener — runs at app level so the sender gets the
+    // blue tick update even when they are viewing a different conversation.
+    // The backend now emits messages-seen to the sender's personal room (userId)
+    // in addition to the conversation room, so this always fires.
+    useEffect(() => {
+        const onMessagesSeen = ({ conversationId: cid, seenBy, seenAt }) => {
+            // Only update the active message list if it belongs to this conversation
+            if (String(cid) !== String(activeChatIdRef.current)) return
+            setMessageList((prev) =>
+                prev.map((m) => {
+                    const alreadySeen = (m.seenBy ?? []).some(
+                        (s) => String(s.user) === String(seenBy)
+                    )
+                    if (alreadySeen) return m
+                    return {
+                        ...m,
+                        seenBy: [...(m.seenBy ?? []), { user: seenBy, seenAt }],
+                    }
+                })
+            )
+        }
+
+        socket.on("messages-seen", onMessagesSeen)
+        return () => socket.off("messages-seen", onMessagesSeen)
+    }, [setMessageList])
+
+    // Guaranteed sidebar update for ALL members — fires on every new message
+    // via each member's personal room. Handles unread count via upsert so it
+    // works even when unreadCounts starts as an empty array [].
+    useEffect(() => {
+        const onPreviewUpdated = ({ conversationId: cid, latestmessage, updatedAt, senderId }) => {
+            setConversationsList((prev) => {
+                const updated = prev.map((c) => {
+                    if (String(c._id ?? c.id) !== String(cid)) return c
+
+                    const myId = myIdRef.current
+                    const isThisChatOpen = String(activeChatIdRef.current) === String(cid)
+                    const iAmSender = String(myId) === String(senderId)
+
+                    // Don't touch unread count if: (a) I sent this message, or (b) this chat is open
+                    let updatedCounts = c.unreadCounts ?? []
+                    if (!isThisChatOpen && !iAmSender) {
+                        // Upsert: find my entry and increment, or add a new entry with count 1
+                        const idx = updatedCounts.findIndex(
+                            (u) => String(u.userId) === String(myId)
+                        )
+                        if (idx !== -1) {
+                            updatedCounts = updatedCounts.map((u, i) =>
+                                i === idx ? { ...u, count: (u.count ?? 0) + 1 } : u
+                            )
+                        } else {
+                            updatedCounts = [...updatedCounts, { userId: myId, count: 1 }]
+                        }
+                    }
+
+                    return { ...c, latestmessage, updatedAt, unreadCounts: updatedCounts }
+                })
+
+                // Re-sort: pinned first, then newest on top
+                return [
+                    ...updated.filter((c) => c.isPinned),
+                    ...updated
+                        .filter((c) => !c.isPinned)
+                        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
+                ]
+            })
+        }
+
+        socket.on("conversation-preview-updated", onPreviewUpdated)
+        return () => socket.off("conversation-preview-updated", onPreviewUpdated)
+    }, [setConversationsList])
 
     useEffect(() => {
         const audio = notificationAudio
@@ -42,46 +121,20 @@ export default function NotificationListener() {
             const { message, sender } = data
             const convId = message.conversationId
 
-            // update conversations list
+            // NOTE: unreadCounts are updated by conversation-preview-updated (always fires).
+            // new-message-notification only handles toast + sound to avoid double-counting.
+            // But we still handle the edge case: if this conv isn't in the list yet, add it.
             setConversationsList((prev) => {
-                const idx = prev.findIndex((c) => c._id === convId)
+                const idx = prev.findIndex((c) => String(c._id ?? c.id) === String(convId))
+                if (idx !== -1) return prev  // already in list — preview-updated handles it
 
-                if (idx === -1) {
-                    const newConv = {
-                        ...data.conversation,
-                        latestmessage: message.text ?? "sent an image",
-                        updatedAt: new Date().toISOString(),
-                    }
-                    return [newConv, ...prev]
+                // New conversation not yet in the list: add it
+                const newConv = {
+                    ...data.conversation,
+                    latestmessage: message.text ?? "sent an image",
+                    updatedAt: new Date().toISOString(),
                 }
-
-                const updated = prev.map((c, i) => {
-                    if (i !== idx) return c
-                    return {
-                        ...c,
-                        latestmessage: message.text ?? "sent an image",
-                        updatedAt: new Date().toISOString(),
-                        // Fix #41: increment unread count for every member EXCEPT the sender.
-                        // `u.userId !== sender._id` is correct for 2-person chats:
-                        // the sender's own badge should never increase.
-                        unreadCounts: c.unreadCounts.map((u) =>
-                            u.userId !== sender._id
-                                ? { ...u, count: u.count + 1 }
-                                : u
-                        ),
-                    }
-                })
-
-                return [
-                    ...updated.filter((c) => c.isPinned),
-                    ...updated
-                        .filter((c) => !c.isPinned)
-                        .sort(
-                            (a, b) =>
-                                new Date(b.updatedAt).getTime() -
-                                new Date(a.updatedAt).getTime()
-                        ),
-                ]
+                return [newConv, ...prev]
             })
 
             // skip if already inside chat

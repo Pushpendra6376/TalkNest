@@ -101,13 +101,21 @@ const socketHandlers = (io, socket, userSocketMap) => {
 
       socket.join(roomId);
 
-      // Reset unread count for this user in the JSON unreadCounts array
-      conv.unreadCounts = (conv.unreadCounts || []).map((unread) => {
-        if (String(unread.userId) === String(currentUserId)) {
-          return { ...unread, count: 0 };
-        }
-        return unread;
-      });
+      // Upsert: reset this user's unread count to 0 (or create entry if missing)
+      const currentCounts = conv.unreadCounts || [];
+      const existingIdx = currentCounts.findIndex(
+        (u) => String(u.userId) === String(currentUserId)
+      );
+      if (existingIdx !== -1) {
+        conv.unreadCounts = currentCounts.map((u, i) =>
+          i === existingIdx ? { ...u, count: 0 } : u
+        );
+      } else {
+        conv.unreadCounts = [
+          ...currentCounts,
+          { userId: currentUserId, count: 0 },
+        ];
+      }
       await conv.save();
 
       // Mark all unseen messages in this conversation as seen by this user.
@@ -154,11 +162,26 @@ const socketHandlers = (io, socket, userSocketMap) => {
         });
       }
 
-      // Notify the sender(s) in this room that their messages were seen
-      io.to(roomId).emit("messages-seen", {
+      // Notify the sender(s) that their messages were seen.
+      // Emit to the conversation room (for users currently viewing this chat)
+      // AND to each sender's personal room (so they get the update even if
+      // they've navigated away from this conversation).
+      const seenPayload = {
         conversationId: roomId,
         seenBy: currentUserId,
         seenAt,
+      };
+
+      io.to(roomId).emit("messages-seen", seenPayload);
+
+      // Also notify each unique message sender via their personal room
+      const uniqueSenderIds = [
+        ...new Set(msgsToUpdate.map(({ msg }) => String(msg.senderId))),
+      ];
+      uniqueSenderIds.forEach((senderId) => {
+        if (String(senderId) !== String(currentUserId)) {
+          io.to(senderId).emit("messages-seen", seenPayload);
+        }
       });
 
       io.to(roomId).emit("user-joined-room", currentUserId);
@@ -325,6 +348,19 @@ const socketHandlers = (io, socket, userSocketMap) => {
       });
 
       io.to(conversationId).emit("receive-message", message);
+
+      // ── Sidebar preview update for ALL members (personal rooms) ──────────
+      // Emit to every member's personal room so their conversation list always
+      // updates instantly — regardless of which page they're viewing.
+      const previewPayload = {
+        conversationId,
+        latestmessage: text || "sent an image",
+        updatedAt: new Date().toISOString(),
+        senderId,
+      };
+      (conversation.members || []).forEach((memberId) => {
+        io.to(String(memberId)).emit("conversation-preview-updated", previewPayload);
+      });
 
       if (!isReceiverInsideChatRoom) {
         console.log("Emitting new message notification to:", String(receiverId));
