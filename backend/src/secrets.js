@@ -4,8 +4,8 @@ dotenv.config({ path: ".env" });
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 const JWT_SECRET = process.env.JWT_SECRET;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-// Fix: was "gemini-3-flash-preview" which doesn't exist
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+// Using gemini-3.5-flash - latest and most optimized flash model
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash";
 const EMAIL = process.env.EMAIL;
 const PASSWORD = process.env.PASSWORD;
 const AWS_BUCKET_NAME = process.env.AWS_BUCKET_NAME;
